@@ -14,7 +14,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Locum Grapevine",
-  description: "A platform for locum doctors in Australia.",
+  description:
+    "Honest, crowd-sourced reviews of hospitals, departments and roles for locum doctors in Australia.",
 };
 
 export default function RootLayout({
