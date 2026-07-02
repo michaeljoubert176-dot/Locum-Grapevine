@@ -13,14 +13,10 @@ export default function WaitlistForm({ idPrefix, theme = "light" }: WaitlistForm
 
   return (
     <form
-      // ------------------------------------------------------------------
-      // FORMSPREE SETUP: replace YOUR_FORMSPREE_ID below with your real
-      // form ID. Get it from https://formspree.io -> your form -> the
-      // "Integration" tab, where it's shown as a URL like:
-      //   https://formspree.io/f/abcd1234
-      // Copy the "abcd1234" part (or the full URL) in here.
-      // ------------------------------------------------------------------
-      action="https://formspree.io/f/YOUR_FORMSPREE_ID"
+      // Posts to the Locum Grapevine Formspree form. To point this at a
+      // different Formspree form later, swap the ID in this URL (get it
+      // from https://formspree.io -> your form -> the "Integration" tab).
+      action="https://formspree.io/f/mlgyodgy"
       method="POST"
       className="mx-auto flex w-full max-w-md flex-col gap-3 sm:flex-row"
     >
