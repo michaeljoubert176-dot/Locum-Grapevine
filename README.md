@@ -1,8 +1,32 @@
 # Locum Grapevine
 
-A website for locum doctors in Australia. This is currently a starting
-point — a "coming soon" placeholder page — set up so we can build the real
-site on top of it.
+A website for locum doctors in Australia. It's a platform for honest,
+crowd-sourced reviews of hospitals, departments and roles — so locums can
+know what a job is actually like before they accept it, instead of relying
+on word of mouth.
+
+## What's on the homepage
+
+The homepage (`app/page.tsx`) is a landing page with an email waitlist,
+built from four sections, top to bottom:
+
+1. **Hero** — states the core promise ("find out what a locum job is
+   really like before you accept it") with an email signup form.
+2. **Problem** — describes the pain locums feel today: accepting a job
+   without knowing the workload, culture, or what "accommodation
+   included" actually means.
+3. **How we help** — explains how Locum Grapevine's crowd-sourced reviews
+   solve that, covering ratings, practical details (travel/car/
+   accommodation), and that reviews come from real locums, not agencies.
+4. **Closing call to action** — a second, final chance to join the
+   waitlist.
+
+The email form (`app/components/WaitlistForm.tsx`) is a plain HTML form
+that posts straight to [Formspree](https://formspree.io/), a service that
+emails you form submissions without needing a backend. **Before this goes
+live, open that file and replace `YOUR_FORMSPREE_ID` with your real
+Formspree form ID** — there's a comment right above it in the code
+explaining where to get it.
 
 The site is built with [Next.js](https://nextjs.org/) (a React framework),
 [TypeScript](https://www.typescriptlang.org/) (JavaScript with type
@@ -46,11 +70,14 @@ Here's what each folder and file is for:
 
 ```
 Locum-Grapevine/
-├── app/                  ← The pages of the website live here
-│   ├── layout.tsx        ← Shared HTML shell wrapping every page
-│   ├── page.tsx          ← The homepage ("/") — currently the placeholder
-│   ├── globals.css       ← Site-wide styles and Tailwind setup
-│   └── favicon.ico       ← The little icon shown in browser tabs
+├── app/                    ← The pages of the website live here
+│   ├── layout.tsx          ← Shared HTML shell wrapping every page
+│   ├── page.tsx            ← The homepage ("/") — the landing page
+│   ├── globals.css         ← Site-wide styles and Tailwind setup
+│   ├── favicon.ico         ← The little icon shown in browser tabs
+│   └── components/         ← Reusable pieces used by the homepage
+│       ├── WaitlistForm.tsx  ← The email signup form (posts to Formspree)
+│       └── icons.tsx         ← Small decorative icons used in the page
 ├── public/                ← Static files served as-is (images, etc.)
 ├── package.json            ← Lists the project's dependencies and scripts
 ├── package-lock.json       ← Exact versions of every dependency (auto-generated, don't edit by hand)
@@ -68,7 +95,7 @@ defines the site's URLs. Right now there's only one page:
 
 - **`app/page.tsx`** is the homepage, shown at `/`. This is the file to
   edit to change what visitors see when they land on the site. It's
-  currently a simple placeholder.
+  currently the landing page described above.
 - **`app/layout.tsx`** wraps every page (including future ones). It sets
   up the `<html>` and `<body>` tags, loads fonts, and defines page
   metadata like the browser tab title.
@@ -76,6 +103,9 @@ defines the site's URLs. Right now there's only one page:
   CSS setup. Most day-to-day styling is done directly in components using
   Tailwind utility classes (e.g. `className="text-xl font-bold"`) rather
   than writing CSS here.
+- **`app/components/`** holds small pieces of UI reused across the
+  homepage — the waitlist form and the decorative icons — so the same
+  code isn't copy-pasted in multiple places.
 
 As the site grows, new pages are added by creating new folders inside
 `app/` with their own `page.tsx` file — for example, `app/about/page.tsx`
