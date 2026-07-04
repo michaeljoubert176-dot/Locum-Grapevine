@@ -1,26 +1,41 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@theme {
+  /* Warmer, deeper green scale — replaces the flat teal-on-grey identity. */
+  --color-teal-50: #f1f6ec;
+  --color-teal-100: #dfead2;
+  --color-teal-200: #c0d6ac;
+  --color-teal-300: #9dbd82;
+  --color-teal-400: #79a262;
+  --color-teal-500: #5c8749;
+  --color-teal-600: #486d39;
+  --color-teal-700: #39572e;
+  --color-teal-800: #2b4325;
+  --color-teal-900: #21331e;
+  --color-teal-950: #172415;
+
+  /* Warm paper backgrounds and ink text, replacing flat grey/white. */
+  --color-paper: #faf3e6;
+  --color-paper-warm: #f1e6d2;
+  --color-ink: #20261d;
+  --color-ink-soft: #4b5443;
+
+  /* Single warm accent that sits with the greens. Used sparingly. */
+  --color-gold-100: #f5e2bd;
+  --color-gold-500: #c8863f;
+  --color-gold-600: #a76f34;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-display: var(--font-fraunces);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-paper);
+  color: var(--color-ink);
+}
+
+::selection {
+  background: var(--color-gold-100);
 }
