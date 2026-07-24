@@ -125,7 +125,7 @@ create table agencies (
 --      feel safe?".
 --   b) Two "gradient" scores (also 1 to 5) that describe *how much* of
 --      something there was, rather than whether it was good or bad —
---      e.g. workload_intensity of 1 might mean very light, 5 very heavy.
+--      e.g. workload_intensity of 1 might mean extremely busy, 5 very quiet.
 --   c) Plain facts about the job — pay, roster type, shift times,
 --      whether a car/accommodation/flights were provided, and so on.
 --
