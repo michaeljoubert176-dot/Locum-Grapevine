@@ -157,9 +157,8 @@ create table reviews (
   -- "Would you recommend this role to another locum?"
   would_recommend smallint not null check (would_recommend between 1 and 5),
 
-  -- "How much supervision did you need?" (kept as a core question, even
-  -- though it reads a bit like an intensity scale, per the site's fixed
-  -- nine-question review format.)
+  -- "I received the supervision I needed" — agree/disagree, from
+  -- 1 (strongly disagree) to 5 (strongly agree).
   supervision_needed smallint not null check (supervision_needed between 1 and 5),
 
   -- "Did you feel safe doing this job?"
@@ -182,8 +181,8 @@ create table reviews (
   -- something (light-to-heavy), not whether it was good or bad.
   -- --------------------------------------------------------------------
 
-  -- How intense/heavy the workload felt, from 1 (very light) to
-  -- 5 (very heavy).
+  -- How busy the workload felt, from 1 (extremely busy) to
+  -- 5 (very quiet).
   workload_intensity smallint not null check (workload_intensity between 1 and 5),
 
   -- How much hands-on supervision was actually provided, from 1 (very
@@ -194,6 +193,18 @@ create table reviews (
   -- --------------------------------------------------------------------
   -- Facts about the job — plain, objective details rather than opinions.
   -- --------------------------------------------------------------------
+
+  -- The date the locum's placement in this role started, if known. This
+  -- is when the work actually happened, which is not the same as
+  -- created_at (when the review was posted) — a review might be posted
+  -- weeks or months after the work took place. Used later to weight
+  -- reviews by recency.
+  worked_from date,
+
+  -- The date the locum's placement in this role ended, if known. Used
+  -- alongside worked_from to work out how long the placement lasted, for
+  -- duration weighting.
+  worked_to date,
 
   -- Whether the roster (shift schedule) was fixed (same shifts every
   -- week) or rotating (shifts change week to week).
@@ -234,6 +245,11 @@ create table reviews (
   -- Whether accommodation was provided as part of the placement.
   accommodation_provided boolean not null default false,
 
+  -- How good the provided accommodation was, from 1 (poor) to 5
+  -- (excellent). Only meaningful — and only expected to be filled in —
+  -- when accommodation_provided is true; left empty (null) otherwise.
+  accommodation_quality smallint check (accommodation_quality between 1 and 5),
+
   -- Whether flights were provided as part of the placement.
   flights_provided boolean not null default false,
 
@@ -241,10 +257,9 @@ create table reviews (
   -- Free text — optional, open-ended fields.
   -- --------------------------------------------------------------------
 
-  -- An optional field where the reviewer can note the ID of the person
-  -- who orientated/inducted them, if they know it and want to give
-  -- credit (e.g. "the registrar who did my induction, Sarah W.").
-  wish_id_known text,
+  -- Answer to "What do you wish you'd known about this job before you
+  -- accepted it?" — optional.
+  wish_youd_known text,
 
   -- Any other feedback that doesn't fit into the questions above.
   other_feedback text,
