@@ -24,8 +24,8 @@ export default function ReviewCard({ review }: { review: ReviewRow }) {
   const hasOtherFeedback = Boolean(review.other_feedback?.trim());
 
   return (
-    <li className="rounded-2xl border border-teal-700/15 bg-paper-warm p-5">
-      <p className="text-xs tracking-wide text-teal-700/70 uppercase">{formatWorkedPeriod(review)}</p>
+    <li className="rounded-2xl border border-line border-l-4 border-l-purple bg-white p-5">
+      <p className="text-xs tracking-wide text-amber-accent uppercase">{formatWorkedPeriod(review)}</p>
 
       {hasWishYoudKnown && (
         <div className="mt-3">

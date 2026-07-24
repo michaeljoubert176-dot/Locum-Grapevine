@@ -1,41 +1,47 @@
 @import "tailwindcss";
 
 @theme {
-  /* Warmer, deeper green scale — replaces the flat teal-on-grey identity. */
-  --color-teal-50: #f1f6ec;
-  --color-teal-100: #dfead2;
-  --color-teal-200: #c0d6ac;
-  --color-teal-300: #9dbd82;
-  --color-teal-400: #79a262;
-  --color-teal-500: #5c8749;
-  --color-teal-600: #486d39;
-  --color-teal-700: #39572e;
-  --color-teal-800: #2b4325;
-  --color-teal-900: #21331e;
-  --color-teal-950: #172415;
+  /* Design tokens for the Locum Grapevine palette. Adjust colours here —
+     every component reads from these, nothing hard-codes a hex value. */
 
-  /* Warm paper backgrounds and ink text, replacing flat grey/white. */
-  --color-paper: #faf3e6;
-  --color-paper-warm: #f1e6d2;
-  --color-ink: #20261d;
-  --color-ink-soft: #4b5443;
+  /* Text */
+  --color-ink: #1c2b24;
+  --color-ink-soft: #5a6660;
 
-  /* Single warm accent that sits with the greens. Used sparingly. */
-  --color-gold-100: #f5e2bd;
-  --color-gold-500: #c8863f;
-  --color-gold-600: #a76f34;
+  /* Green — the brand colour. Headline star, positive fact chips,
+     breadcrumb links, distribution bars. */
+  --color-green: #1f5741;
+  --color-green-soft: #e7efea;
+
+  /* Purple — an accent, used sparingly: the pay chip, the spectrum
+     marker, the left edge of review cards. Never as common as green. */
+  --color-purple: #4a2545;
+  --color-purple-soft: #f0e9ef;
+
+  /* Amber — neutral fact chips, and small uppercase section labels. */
+  --color-amber: #7a4a12;
+  --color-amber-soft: #f6e8d2;
+  --color-amber-accent: #9c6b14;
+
+  /* Absent/negative facts. Darkened from the #9A958E brief value to clear
+     WCAG AA (4.5:1) against --color-muted-soft — #9A958E only hit 2.66:1. */
+  --color-muted: #6b6863;
+  --color-muted-soft: #f4f2ef;
+
+  /* Lines and borders. */
+  --color-line: #e3e0da;
 }
 
 @theme inline {
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-inter);
   --font-display: var(--font-fraunces);
 }
 
 body {
-  background: var(--color-paper);
+  background: #ffffff;
   color: var(--color-ink);
 }
 
 ::selection {
-  background: var(--color-gold-100);
+  background: var(--color-green-soft);
 }

@@ -9,7 +9,7 @@ export default function Breadcrumb({ path }: { path: CategoryRow[] }) {
     <nav aria-label="Breadcrumb" className="text-sm">
       <ol role="list" className="flex flex-wrap items-center gap-1.5 text-ink-soft">
         <li className="flex items-center gap-1.5">
-          <Link href="/browse" className="rounded-sm hover:text-teal-700 hover:underline">
+          <Link href="/browse" className="rounded-sm text-green hover:underline">
             Browse
           </Link>
           {path.length > 0 && <span aria-hidden="true">/</span>}
@@ -25,7 +25,7 @@ export default function Breadcrumb({ path }: { path: CategoryRow[] }) {
               ) : (
                 <Link
                   href={`/browse/${category.id}`}
-                  className="rounded-sm hover:text-teal-700 hover:underline"
+                  className="rounded-sm text-green hover:underline"
                 >
                   {category.name}
                 </Link>

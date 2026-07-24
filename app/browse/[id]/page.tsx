@@ -84,7 +84,7 @@ export default async function BrowseCategoryPage({
       <main className="mx-auto min-h-screen max-w-3xl px-6 py-16">
         <Breadcrumb path={path} />
         <RoleTitle path={path} category={category} />
-        <p className="mt-10 rounded-2xl border border-teal-700/15 bg-paper-warm p-6 text-sm text-ink-soft">
+        <p className="mt-10 rounded-2xl border border-line bg-white p-6 text-sm text-ink-soft">
           No reviews yet for this role.
         </p>
       </main>
@@ -109,7 +109,7 @@ export default async function BrowseCategoryPage({
         <FactChips review={mostRecentReview} />
       </div>
 
-      <div className="mt-12 grid gap-10 rounded-2xl border border-teal-700/15 bg-paper-warm p-6 sm:grid-cols-2 sm:p-8">
+      <div className="mt-12 grid gap-10 rounded-2xl border border-line bg-white p-6 sm:grid-cols-2 sm:p-8">
         <GradientSpectrum title="Workload" anchors={WORKLOAD_ANCHORS} average={workloadAverage!} />
         <GradientSpectrum
           title="Supervision"

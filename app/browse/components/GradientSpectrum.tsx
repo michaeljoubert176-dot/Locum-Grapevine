@@ -20,22 +20,22 @@ export default function GradientSpectrum({
       <h3 className="text-sm font-semibold text-ink">{title}</h3>
 
       <div className="relative mt-8 mr-6 ml-6">
-        <div className="h-px bg-teal-700/25" />
+        <div className="h-px bg-line" />
         <div className="absolute inset-x-0 top-0 flex justify-between">
           {anchors.map((_, i) => (
-            <span key={i} className="h-2 w-px -translate-y-1/2 bg-teal-700/40" />
+            <span key={i} className="h-2 w-px -translate-y-1/2 bg-line" />
           ))}
         </div>
         <div
           className="absolute top-0 flex -translate-x-1/2 -translate-y-full flex-col items-center pb-1.5"
           style={{ left: `${percent}%` }}
         >
-          <span className="rounded-full bg-teal-800 px-2 py-0.5 text-xs font-semibold whitespace-nowrap text-white">
+          <span className="rounded-full bg-purple px-2 py-0.5 text-xs font-semibold whitespace-nowrap text-white">
             {average.toFixed(1)}
           </span>
           <span
             aria-hidden="true"
-            className="mt-1 h-2.5 w-2.5 rotate-45 rounded-[2px] bg-teal-800"
+            className="mt-1 h-2.5 w-2.5 rotate-45 rounded-[2px] bg-purple"
           />
         </div>
       </div>

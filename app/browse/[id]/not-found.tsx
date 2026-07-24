@@ -11,7 +11,7 @@ export default function CategoryNotFound() {
       </p>
       <Link
         href="/browse"
-        className="mt-8 rounded-md bg-teal-700 px-5 py-3 text-base font-semibold text-white transition-colors hover:bg-teal-800 focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:ring-offset-2 focus-visible:outline-none"
+        className="mt-8 rounded-md bg-green px-5 py-3 text-base font-semibold text-white transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-green focus-visible:ring-offset-2 focus-visible:outline-none"
       >
         Back to Browse
       </Link>
