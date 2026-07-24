@@ -60,7 +60,7 @@ export default function ReviewsBreakdownSection({ reviews }: { reviews: ReviewRo
               <button
                 type="button"
                 onClick={() => setFilter(null)}
-                className="font-medium text-teal-700 underline underline-offset-2 hover:text-teal-800"
+                className="font-medium text-green underline underline-offset-2 hover:opacity-80"
               >
                 Clear filter
               </button>
@@ -69,7 +69,7 @@ export default function ReviewsBreakdownSection({ reviews }: { reviews: ReviewRo
         </div>
 
         {visibleReviews.length === 0 ? (
-          <p className="mt-6 rounded-2xl border border-teal-700/15 bg-paper-warm p-6 text-sm text-ink-soft">
+          <p className="mt-6 rounded-2xl border border-line bg-white p-6 text-sm text-ink-soft">
             No reviews match this filter.
           </p>
         ) : (
@@ -128,7 +128,7 @@ function QuestionRow({
               className="group flex h-full flex-1 flex-col items-center justify-end gap-1 disabled:cursor-default"
             >
               <span
-                className={`text-xs tabular-nums ${isActive ? "font-semibold text-teal-800" : "text-ink-soft"}`}
+                className={`text-xs tabular-nums ${isActive ? "font-semibold text-green" : "text-ink-soft"}`}
               >
                 {count}
               </span>
@@ -136,10 +136,10 @@ function QuestionRow({
                 style={{ height: `${Math.max(heightPercent, count === 0 ? 4 : 8)}%` }}
                 className={`w-full min-h-[3px] rounded-t-sm transition-colors ${
                   isActive
-                    ? "bg-teal-700"
+                    ? "bg-green"
                     : count === 0
-                      ? "bg-teal-700/10"
-                      : "bg-teal-700/30 group-hover:bg-teal-700/50 group-enabled:cursor-pointer"
+                      ? "bg-green/10"
+                      : "bg-green/30 group-hover:bg-green/50 group-enabled:cursor-pointer"
                 }`}
               />
               <span className="text-[11px] text-ink-soft">{score}</span>

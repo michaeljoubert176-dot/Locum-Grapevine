@@ -12,12 +12,12 @@ export default function HeadlineStars({
   return (
     <div className="flex flex-wrap items-center gap-3">
       <span className="relative inline-flex" aria-hidden="true">
-        <StarRow className="text-teal-700/20" />
+        <StarRow className="text-green/20" />
         <span
           className="absolute inset-0 top-0 left-0 overflow-hidden"
           style={{ width: `${fillPercent}%` }}
         >
-          <StarRow className="text-gold-500" />
+          <StarRow className="text-green" />
         </span>
       </span>
       <p className="text-ink">

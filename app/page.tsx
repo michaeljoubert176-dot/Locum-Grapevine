@@ -20,7 +20,7 @@ export default function Home() {
     <>
       <main className="relative">
         <div aria-hidden="true" className="pointer-events-none absolute inset-0 hidden md:block">
-          <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-gradient-to-b from-transparent via-teal-700/20 to-transparent" />
+          <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-gradient-to-b from-transparent via-green/20 to-transparent" />
         </div>
 
         {/* 1. Hero */}
@@ -28,14 +28,14 @@ export default function Home() {
           aria-labelledby="hero-heading"
           className="relative overflow-hidden px-6 pt-24 pb-20 sm:pt-32 sm:pb-28"
         >
-          <Node className="bg-teal-700 ring-paper" />
+          <Node className="bg-green ring-white" />
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute -top-32 -right-32 h-96 w-96 rounded-full bg-teal-400/10 blur-3xl"
+            className="pointer-events-none absolute -top-32 -right-32 h-96 w-96 rounded-full bg-green/10 blur-3xl"
           />
 
           <div className="relative mx-auto flex max-w-3xl flex-col items-center text-center">
-            <p className="font-display text-sm font-semibold tracking-wide text-teal-700">
+            <p className="font-display text-sm font-semibold tracking-wide text-green">
               <span className="block">The Locum Grapevine</span>
               <span className="block">Australia</span>
             </p>
@@ -60,8 +60,8 @@ export default function Home() {
               </p>
             </div>
 
-            <div className="mt-14 w-full max-w-xl rounded-2xl border border-teal-700/15 bg-paper-warm px-7 py-6 text-left">
-              <p className="font-display text-sm font-semibold text-teal-700">Sound familiar?</p>
+            <div className="mt-14 w-full max-w-xl rounded-2xl border border-line bg-white px-7 py-6 text-left">
+              <p className="font-display text-sm font-semibold text-green">Sound familiar?</p>
               <p className="mt-2 leading-relaxed text-ink-soft italic">
                 You accept the job weeks in advance but the roster only arrives the day before.
                 Surprise, you’ll be solo on nights, about thirty admissions a shift. Good luck! Oh
@@ -74,9 +74,9 @@ export default function Home() {
         {/* 2. The Problem */}
         <section
           aria-labelledby="problem-heading"
-          className="relative bg-paper-warm px-6 py-20 sm:py-28"
+          className="relative bg-white px-6 py-20 sm:py-28"
         >
-          <Node className="bg-teal-700 ring-paper-warm" />
+          <Node className="bg-green ring-white" />
           <div className="mx-auto max-w-3xl">
             <h2
               id="problem-heading"
@@ -87,7 +87,7 @@ export default function Home() {
 
             <ol
               role="list"
-              className="mt-14 space-y-14 border-l border-teal-700/20 pl-8 sm:pl-10"
+              className="mt-14 space-y-14 border-l border-line pl-8 sm:pl-10"
             >
               <ProblemBlock
                 title="Choosing where to work is one of the most stressful parts of locuming. It shouldn’t be."
@@ -108,9 +108,9 @@ export default function Home() {
         {/* 3. The Solution */}
         <section
           aria-labelledby="solution-heading"
-          className="relative bg-teal-900 px-6 py-20 sm:py-28"
+          className="relative bg-green px-6 py-20 sm:py-28"
         >
-          <Node className="bg-gold-500 ring-teal-900" />
+          <Node className="bg-white ring-green" />
           <div className="mx-auto max-w-5xl">
             <div className="max-w-2xl">
               <h2
@@ -119,7 +119,7 @@ export default function Home() {
               >
                 Together, we have the answer.
               </h2>
-              <p className="mt-5 text-lg leading-relaxed text-teal-100">
+              <p className="mt-5 text-lg leading-relaxed text-white/85">
                 Locum Grapevine is the word on every ward. It turns fragmented stories, heard by a
                 lucky few, into a detailed, honest and searchable record of what a job is really
                 like. Whether it’s a warning or a winner, every role, department and hospital has a
@@ -148,9 +148,9 @@ export default function Home() {
         {/* 4. Closing CTA */}
         <section
           aria-labelledby="waitlist-heading"
-          className="relative bg-teal-800 px-6 py-20 text-center sm:py-28"
+          className="relative border-t border-white/10 bg-green px-6 py-20 text-center sm:py-28"
         >
-          <Node className="bg-gold-500 ring-teal-800" />
+          <Node className="bg-white ring-green" />
           <div className="mx-auto max-w-xl">
             <h2
               id="waitlist-heading"
@@ -158,13 +158,13 @@ export default function Home() {
             >
               Sound like something you want to be a part of?
             </h2>
-            <p className="mt-4 text-lg leading-relaxed text-teal-100">
+            <p className="mt-4 text-lg leading-relaxed text-white/85">
               Join your community today and start spreading the word.
             </p>
             <div className="mt-9">
               <WaitlistForm idPrefix="footer" theme="dark" />
             </div>
-            <p className="mt-4 text-sm text-teal-200">
+            <p className="mt-4 text-sm text-white/70">
               Locum Grapevine is launching soon. Join the waitlist and we’ll tell you the moment
               it’s live.
             </p>
@@ -172,7 +172,7 @@ export default function Home() {
         </section>
       </main>
 
-      <footer className="bg-teal-950 px-6 py-8 text-center text-sm text-teal-200">
+      <footer className="bg-ink px-6 py-8 text-center text-sm text-white/70">
         © {new Date().getFullYear()} Locum Grapevine. Australia.
       </footer>
     </>
@@ -193,7 +193,7 @@ function ProblemBlock({ title, body }: { title: string; body: string }) {
     <li className="relative">
       <span
         aria-hidden="true"
-        className="absolute top-1 left-[-2.6rem] h-3 w-3 -translate-x-1/2 rounded-full bg-teal-700 ring-4 ring-paper-warm sm:left-[-3.1rem]"
+        className="absolute top-1 left-[-2.6rem] h-3 w-3 -translate-x-1/2 rounded-full bg-green ring-4 ring-white sm:left-[-3.1rem]"
       />
       <h3 className="font-display text-xl font-semibold text-ink sm:text-2xl">{title}</h3>
       <p className="mt-3 text-base leading-relaxed text-ink-soft">{body}</p>
@@ -205,7 +205,7 @@ function SolutionBox({ title, body }: { title: string; body: string }) {
   return (
     <li className="rounded-2xl border border-white/10 bg-white/5 p-7">
       <h3 className="font-display text-lg font-semibold text-white">{title}</h3>
-      <p className="mt-3 text-sm leading-relaxed text-teal-100">{body}</p>
+      <p className="mt-3 text-sm leading-relaxed text-white/85">{body}</p>
     </li>
   );
 }

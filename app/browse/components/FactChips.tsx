@@ -10,9 +10,19 @@ function formatMoney(amount: string): string {
   }).format(value);
 }
 
-function Chip({ children }: { children: React.ReactNode }) {
+function Chip({
+  children,
+  variant = "amber",
+}: {
+  children: React.ReactNode;
+  variant?: "amber" | "purple";
+}) {
   return (
-    <span className="inline-flex max-w-full items-center rounded-full border border-teal-700/20 bg-paper-warm px-3.5 py-1.5 text-sm text-ink">
+    <span
+      className={`inline-flex max-w-full items-center rounded-full px-3.5 py-1.5 text-sm ${
+        variant === "purple" ? "bg-purple-soft text-purple" : "bg-amber-soft text-amber"
+      }`}
+    >
       {children}
     </span>
   );
@@ -22,9 +32,7 @@ function PresenceChip({ label, present }: { label: string; present: boolean }) {
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium ${
-        present
-          ? "bg-teal-700 text-white"
-          : "border border-teal-700/20 bg-paper text-ink-soft"
+        present ? "bg-green text-white" : "bg-muted-soft text-muted"
       }`}
     >
       {present ? (
@@ -43,11 +51,11 @@ export default function FactChips({ review }: { review: ReviewRow }) {
   return (
     <div className="flex flex-wrap gap-2">
       {review.pay_unit === "day" ? (
-        <Chip>{formatMoney(review.pay_amount)} / day</Chip>
+        <Chip variant="purple">{formatMoney(review.pay_amount)} / day</Chip>
       ) : (
-        <Chip>
+        <Chip variant="purple">
           {formatMoney(review.pay_amount)} / hour
-          <span className="ml-1.5 text-xs text-ink-soft">
+          <span className="ml-1.5 text-xs text-purple/70">
             (day rate not shown — shift length unknown)
           </span>
         </Chip>

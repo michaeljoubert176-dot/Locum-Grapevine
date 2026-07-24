@@ -9,7 +9,7 @@ import { IconChevronRight } from "@/app/components/icons";
 export default function CategoryList({ categories }: { categories: CategoryRow[] }) {
   if (categories.length === 0) {
     return (
-      <div className="rounded-2xl border border-teal-700/15 bg-paper-warm p-6 text-sm text-ink-soft">
+      <div className="rounded-2xl border border-line bg-white p-6 text-sm text-ink-soft">
         Nothing has been added here yet.
       </div>
     );
@@ -21,15 +21,15 @@ export default function CategoryList({ categories }: { categories: CategoryRow[]
         <li key={category.id}>
           <Link
             href={`/browse/${category.id}`}
-            className="flex items-center justify-between gap-3 rounded-2xl border border-teal-700/15 bg-paper-warm px-5 py-4 transition-colors hover:border-teal-700/35 hover:bg-teal-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+            className="flex items-center justify-between gap-3 rounded-2xl border border-line bg-white px-5 py-4 transition-colors hover:border-green/35 hover:bg-green-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green focus-visible:ring-offset-2 focus-visible:ring-offset-white"
           >
             <span className="min-w-0">
               <span className="block truncate font-medium text-ink">{category.name}</span>
-              <span className="text-xs tracking-wide text-teal-700/70 uppercase">
+              <span className="text-xs tracking-wide text-amber-accent uppercase">
                 {CATEGORY_LEVEL_LABEL[category.level]}
               </span>
             </span>
-            <IconChevronRight className="h-5 w-5 shrink-0 text-teal-700/50" />
+            <IconChevronRight className="h-5 w-5 shrink-0 text-green/50" />
           </Link>
         </li>
       ))}
