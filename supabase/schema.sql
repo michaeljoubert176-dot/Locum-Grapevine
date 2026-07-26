@@ -304,16 +304,7 @@ create table jobs (
   hospital_id uuid not null references hospitals (id),
 
   -- When this job entry was first created. Filled in automatically.
-  created_at timestamptz not null default now(),
-
-  -- Prevents the exact same combination of position + specialty +
-  -- subspecialty + hospital being entered as two separate jobs. Postgres
-  -- treats two nulls as distinct by default for a plain unique constraint,
-  -- but since subspecialty_id is part of a small, controlled combination
-  -- here, in practice each distinct real-world job should only be created
-  -- once — the application layer should look for an existing matching job
-  -- before creating a new one.
-  unique (position_id, specialty_id, subspecialty_id, hospital_id)
+  created_at timestamptz not null default now()
 );
 
 -- The following indexes each speed up filtering jobs by a single
@@ -324,6 +315,24 @@ create index jobs_position_id_idx on jobs (position_id);
 create index jobs_specialty_id_idx on jobs (specialty_id);
 create index jobs_subspecialty_id_idx on jobs (subspecialty_id);
 create index jobs_hospital_id_idx on jobs (hospital_id);
+
+-- Prevents the exact same combination of position + specialty +
+-- subspecialty + hospital being entered as two separate jobs — otherwise
+-- reviews for what is really the same job could end up split across two
+-- different "jobs" rows. A plain `unique` constraint wouldn't work here:
+-- Postgres treats two nulls as *different* values, so two jobs that both
+-- have no subspecialty (subspecialty_id = null) would slip past a plain
+-- unique constraint and create duplicates. Wrapping subspecialty_id in
+-- `coalesce(..., '00000000-0000-0000-0000-000000000000')` swaps a null
+-- subspecialty for a fixed placeholder value, so two "no subspecialty"
+-- jobs with the same position/specialty/hospital are correctly treated as
+-- duplicates and rejected.
+create unique index jobs_unique_combination_idx on jobs (
+  position_id,
+  specialty_id,
+  hospital_id,
+  coalesce(subspecialty_id, '00000000-0000-0000-0000-000000000000'::uuid)
+);
 
 
 -- ============================================================================
@@ -448,18 +457,22 @@ create table reviews (
   after_hours text,
 
   -- What system the hospital uses for clinical notes — fully on paper,
-  -- a fully electronic medical record (iEMR), or a mix of both.
-  notes_system text not null check (notes_system in ('paper', 'iemr', 'hybrid')),
+  -- a fully electronic medical record (iEMR), or a mix of both. Left
+  -- empty (null) if the reviewer doesn't know or skips this fact.
+  notes_system text check (notes_system in ('paper', 'iemr', 'hybrid')),
 
   -- What system the hospital uses for medication charts — paper,
-  -- electronic, or a hybrid of both.
-  med_charts text not null check (med_charts in ('paper', 'electronic', 'hybrid')),
+  -- electronic, or a hybrid of both. Left empty (null) if the reviewer
+  -- doesn't know or skips this fact.
+  med_charts text check (med_charts in ('paper', 'electronic', 'hybrid')),
 
-  -- The date the locum's placement in this job started.
-  worked_from date not null,
+  -- The date the locum's placement in this job started. Left empty
+  -- (null) if not provided.
+  worked_from date,
 
-  -- The date the locum's placement in this job ended.
-  worked_to date not null,
+  -- The date the locum's placement in this job ended. Left empty (null)
+  -- for placements that are still ongoing, or simply not provided.
+  worked_to date,
 
   -- --------------------------------------------------------------------
   -- Free text — optional, open-ended fields.
