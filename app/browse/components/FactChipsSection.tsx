@@ -7,6 +7,7 @@ import {
   summarizeDutiesByShiftType,
   summarizePay,
   type PaySummary,
+  type RateTypeSummary,
   type ReviewRow,
   type ShiftTypeDuties,
 } from "@/lib/reviews";
@@ -14,9 +15,16 @@ import { IconCheck, IconChevronDown, IconX } from "@/app/components/icons";
 
 type Panel = "pay" | "roster" | null;
 
-// The snapshot fact chips: Pay and Roster are tappable, each revealing a
-// panel below the chip row; Car/Accommodation/Flights are simple, static
-// yes/no chips. Only one panel is open at a time, accordion-style.
+const RATE_TYPE_LABEL: Record<RateTypeSummary, string> = {
+  hourly: "Hourly",
+  fixed_shift_rate: "Fixed shift rate",
+  mixed: "Hourly or fixed shift rate",
+};
+
+// The snapshot fact chips. Pay and Roster are tappable, each revealing a
+// panel below; Car/Accommodation/Flights sit on their own line as simple,
+// static yes/no chips. Only one drill-in panel is open at a time,
+// accordion-style.
 export default function FactChipsSection({ reviews }: { reviews: ReviewRow[] }) {
   const [openPanel, setOpenPanel] = useState<Panel>(null);
 
@@ -26,6 +34,7 @@ export default function FactChipsSection({ reviews }: { reviews: ReviewRow[] }) 
   const car = majorityProvided(reviews, "car_provided");
   const accommodation = majorityProvided(reviews, "accommodation_provided");
   const flights = majorityProvided(reviews, "flights_provided");
+  const overtimePaid = majorityProvided(reviews, "overtime_paid");
 
   function togglePanel(panel: "pay" | "roster") {
     setOpenPanel((current) => (current === panel ? null : panel));
@@ -41,13 +50,15 @@ export default function FactChipsSection({ reviews }: { reviews: ReviewRow[] }) 
         <ChipButton expanded={openPanel === "roster"} onClick={() => togglePanel("roster")}>
           Roster
         </ChipButton>
+      </div>
 
+      <div className="mt-2 flex flex-wrap gap-2">
         <PresenceChip label="Car" present={car} />
         <PresenceChip label="Accommodation" present={accommodation} />
         <PresenceChip label="Flights" present={flights} />
       </div>
 
-      {openPanel === "pay" && <PayPanel pay={pay} />}
+      {openPanel === "pay" && <PayPanel pay={pay} overtimePaid={overtimePaid} />}
       {openPanel === "roster" && <RosterPanel duties={duties} />}
     </div>
   );
@@ -67,51 +78,40 @@ function formatPayHeadline(pay: PaySummary): string {
   return "Pay";
 }
 
-function describeRateTypes(rateTypeCounts: { hourly: number; fixed_shift_rate: number }): string {
-  const { hourly, fixed_shift_rate: fixedShiftRate } = rateTypeCounts;
-  if (hourly > 0 && fixedShiftRate === 0) return "Hourly";
-  if (fixedShiftRate > 0 && hourly === 0) return "Fixed shift rate";
-  return `Hourly (${hourly}) / fixed shift rate (${fixedShiftRate})`;
-}
-
-function PayPanel({ pay }: { pay: PaySummary }) {
+function PayPanel({ pay, overtimePaid }: { pay: PaySummary; overtimePaid: boolean }) {
   return (
     <div className="mt-4 rounded-2xl border border-line bg-white p-5">
       <dl className="grid gap-4 sm:grid-cols-2">
         {pay.dayRate && (
-          <PayStat
-            label="Day rate"
-            value={`${formatMoney(pay.dayRate.min)} – ${formatMoney(pay.dayRate.max)}`}
-            note={`${pay.dayRate.count} of ${pay.totalReviews} reviews`}
-          />
+          <PayStat label="Day rate" value={`${formatMoney(pay.dayRate.min)} – ${formatMoney(pay.dayRate.max)}`} />
         )}
         {pay.hourlyRate && (
           <PayStat
             label="Hourly rate"
             value={`${formatMoney(pay.hourlyRate.min)} – ${formatMoney(pay.hourlyRate.max)}`}
-            note={`${pay.hourlyRate.count} of ${pay.totalReviews} reviews`}
           />
         )}
         {pay.nightRate && (
           <PayStat
-            label="Night rate (where it differs)"
+            label="Night rate"
             value={`${formatMoney(pay.nightRate.min)} – ${formatMoney(pay.nightRate.max)}`}
-            note={`${pay.nightRate.count} of ${pay.totalReviews} reviews`}
           />
         )}
-        <PayStat label="Rate type" value={describeRateTypes(pay.rateTypeCounts)} />
-        <PayStat label="Overtime paid" value={`${pay.overtimePaidCount} of ${pay.totalReviews} reviews`} />
+        <PayStat label="Rate type" value={RATE_TYPE_LABEL[pay.rateType]} />
       </dl>
+
+      <div className="mt-4">
+        <PresenceChip label="Overtime paid" present={overtimePaid} />
+      </div>
     </div>
   );
 }
 
-function PayStat({ label, value, note }: { label: string; value: string; note?: string }) {
+function PayStat({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <dt className="text-xs tracking-wide text-amber-accent uppercase">{label}</dt>
       <dd className="mt-1 text-sm text-ink">{value}</dd>
-      {note && <dd className="text-xs text-ink-soft">{note}</dd>}
     </div>
   );
 }
