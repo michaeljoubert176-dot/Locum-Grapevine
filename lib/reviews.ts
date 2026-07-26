@@ -172,20 +172,20 @@ export function sortReviewsNewestFirst(reviews: ReviewRow[]): ReviewRow[] {
   });
 }
 
-export type PayRange = { min: number; max: number; count: number };
+export type PayRange = { min: number; max: number };
+
+export type RateTypeSummary = "hourly" | "fixed_shift_rate" | "mixed";
 
 export type PaySummary = {
   dayRate: PayRange | null;
   hourlyRate: PayRange | null;
   nightRate: PayRange | null;
-  rateTypeCounts: { hourly: number; fixed_shift_rate: number };
-  overtimePaidCount: number;
-  totalReviews: number;
+  rateType: RateTypeSummary;
 };
 
 function payRange(amounts: number[]): PayRange | null {
   if (amounts.length === 0) return null;
-  return { min: Math.min(...amounts), max: Math.max(...amounts), count: amounts.length };
+  return { min: Math.min(...amounts), max: Math.max(...amounts) };
 }
 
 // Pools every review's pay facts into one summary. Day rate and hourly
@@ -195,20 +195,25 @@ function payRange(amounts: number[]): PayRange | null {
 export function summarizePay(reviews: ReviewRow[]): PaySummary {
   const dayAmounts = reviews.filter((r) => r.pay_unit === "day").map((r) => Number(r.pay_amount));
   const hourlyAmounts = reviews.filter((r) => r.pay_unit === "hour").map((r) => Number(r.pay_amount));
-  const nightAmounts = reviews
-    .filter((r) => r.night_rate_differs && r.night_pay_amount !== null)
-    .map((r) => Number(r.night_pay_amount));
 
-  const rateTypeCounts = { hourly: 0, fixed_shift_rate: 0 };
-  for (const r of reviews) rateTypeCounts[r.rate_type] += 1;
+  // A review's night rate is its night_pay_amount when it reports one that
+  // differs, or simply its regular pay_amount otherwise — so the night
+  // rate always has a figure to show, the same as the day rate whenever it
+  // doesn't actually differ.
+  const nightAmounts = reviews
+    .filter((r) => !r.night_rate_differs || r.night_pay_amount !== null)
+    .map((r) => Number(r.night_rate_differs ? r.night_pay_amount : r.pay_amount));
+
+  const hourlyCount = reviews.filter((r) => r.rate_type === "hourly").length;
+  const fixedCount = reviews.filter((r) => r.rate_type === "fixed_shift_rate").length;
+  const rateType: RateTypeSummary =
+    hourlyCount > 0 && fixedCount > 0 ? "mixed" : fixedCount > 0 ? "fixed_shift_rate" : "hourly";
 
   return {
     dayRate: payRange(dayAmounts),
     hourlyRate: payRange(hourlyAmounts),
     nightRate: payRange(nightAmounts),
-    rateTypeCounts,
-    overtimePaidCount: reviews.filter((r) => r.overtime_paid).length,
-    totalReviews: reviews.length,
+    rateType,
   };
 }
 
@@ -242,12 +247,12 @@ export function summarizeDutiesByShiftType(reviews: ReviewRow[]): ShiftTypeDutie
     .sort((a, b) => a.shiftType.localeCompare(b.shiftType));
 }
 
-// Whether more than half of reviews report this perk as provided. A tie
-// (or a minority) reads as "not provided" — a job shouldn't get a
-// confident checkmark for something that's inconsistent in practice.
+// Whether more than half of reviews report this as true. A tie (or a
+// minority) reads as "no" — a job shouldn't get a confident checkmark for
+// something that's inconsistent in practice.
 export function majorityProvided(
   reviews: ReviewRow[],
-  key: "car_provided" | "accommodation_provided" | "flights_provided"
+  key: "car_provided" | "accommodation_provided" | "flights_provided" | "overtime_paid"
 ): boolean {
   const providedCount = reviews.filter((r) => r[key]).length;
   return providedCount > reviews.length - providedCount;

@@ -12,6 +12,7 @@ import {
 } from "@/lib/reviews";
 import { IconChevronDown } from "@/app/components/icons";
 import DistributionBars from "@/app/browse/components/DistributionBars";
+import StarRating from "@/app/browse/components/StarRating";
 
 // The headline star rating. Tapping it reveals the fuller breakdown below:
 // the overall-rating distribution, the two "would work again"/"would
@@ -23,7 +24,6 @@ export default function RatingSection({ reviews }: { reviews: ReviewRow[] }) {
   const headline = headlineAverage(reviews);
   if (headline === null) return null;
 
-  const fillPercent = Math.max(0, Math.min(1, headline / 5)) * 100;
   const overallDistribution = questionDistribution(reviews, "overall_good_job");
   const workAgainPercent = percentAtLeast(reviews, "would_work_again", 4);
   const recommendPercent = percentAtLeast(reviews, "would_recommend", 4);
@@ -36,15 +36,7 @@ export default function RatingSection({ reviews }: { reviews: ReviewRow[] }) {
         aria-expanded={expanded}
         className="flex w-full flex-wrap items-center gap-3 rounded-2xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green focus-visible:ring-offset-2"
       >
-        <span className="relative inline-flex" aria-hidden="true">
-          <StarRow className="text-green/20" />
-          <span
-            className="absolute inset-0 top-0 left-0 overflow-hidden"
-            style={{ width: `${fillPercent}%` }}
-          >
-            <StarRow className="text-green" />
-          </span>
-        </span>
+        <StarRating average={headline} />
         <p className="text-ink">
           <span className="text-2xl font-semibold">{headline.toFixed(1)}</span>
           <span className="text-ink-soft"> / 5</span>
@@ -126,20 +118,5 @@ function AttributeRow({
         </div>
       )}
     </div>
-  );
-}
-
-function StarRow({ className }: { className: string }) {
-  return (
-    <span className={`flex gap-1 ${className}`}>
-      {Array.from({ length: 5 }).map((_, i) => (
-        <svg key={i} viewBox="0 0 24 24" className="h-7 w-7" aria-hidden="true">
-          <path
-            d="M12 3.5l2.47 5.24 5.53.63-4.13 3.9 1.1 5.63L12 15.9l-5 2.99 1.1-5.62-4.13-3.9 5.53-.63L12 3.5Z"
-            fill="currentColor"
-          />
-        </svg>
-      ))}
-    </span>
   );
 }
