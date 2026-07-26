@@ -10,88 +10,189 @@
 -- columns each spreadsheet has, and how the spreadsheets relate to each
 -- other.
 --
--- There are four tables:
---   1. categories     — the state → hospital → specialty → subspecialty →
---                        role tree that everything else hangs off.
---   2. agencies       — the fixed list of locum agencies people can pick
---                        from when leaving a review.
---   3. reviews        — the actual reviews locums leave about a specific
---                        role.
---   4. bonus_answers  — answers to optional "bonus" questions attached to
---                        a review.
+-- Why does this look different from the old schema?
+-- ---------------------------------------------------
+-- The old schema treated every job as one leaf at the bottom of a single
+-- fixed tree: state -> hospital -> specialty -> subspecialty -> role. That
+-- meant "Cardiology Registrar at Royal Melbourne Hospital" was one rigid
+-- path with no other way to slice the data.
 --
--- This file only defines the *structure* of the database. It does not turn
--- on any security rules (who is allowed to read/write what) — that will be
--- handled in a later phase. It also does not install or connect to
--- anything by itself; it's just a set of instructions ready to be run
--- against a Supabase/Postgres database when the team is ready.
+-- The new schema instead treats a job as the *combination* of several
+-- independent, reusable choices:
+--   - what position is it (RMO, Registrar, Fellow, Consultant, ...)
+--   - what specialty (and, optionally, subspecialty)
+--   - which hospital (and which state that hospital is in)
+--
+-- Each of those choices lives in its own small "lookup" table (a short,
+-- controlled list — like a dropdown menu's options). A "job" is then just a
+-- row that picks one option from each list. This is more flexible: it lets
+-- the site filter and browse by any single attribute (e.g. "show me every
+-- Registrar job", or "show me every Cardiology job", or "show me every job
+-- at this hospital") instead of only being able to walk down one fixed path.
+--
+-- Tables in this file, roughly in the order they're defined:
+--   Lookup (controlled list) tables:
+--     1. positions      — job seniority/type, e.g. RMO, Registrar, Fellow.
+--     2. specialties     — medical specialties, e.g. Medicine, Surgery.
+--     3. subspecialties  — narrower specialties within a specialty.
+--     4. states          — Australian states/territories.
+--     5. hospitals        — hospitals, each in one state.
+--     6. agencies         — locum agencies.
+--     7. shift_types      — kinds of shift, e.g. Night, Weekend.
+--     8. duties           — things a reviewer can tick as part of a shift.
+--   Core tables:
+--     9. jobs             — a specific combination of position + specialty
+--                            (+ optional subspecialty) + hospital.
+--    10. reviews          — a review a locum leaves about a job.
+--    11. review_duties    — which (shift type, duty) pairs a review ticked.
+--    12. bonus_answers    — optional extra question answers on a review.
+--
+-- This file only defines the *structure* of the database, and turns on
+-- baseline security (Row Level Security with public read-only access — see
+-- the notes near the bottom). It does not install or connect to anything by
+-- itself; it's just a set of instructions ready to be run against a
+-- Supabase/Postgres database.
 -- ============================================================================
 
 
 -- ============================================================================
--- 1. CATEGORIES — the browsing tree
+-- 0. REMOVE THE OLD TABLES
 -- ============================================================================
 --
--- In plain language: this is one table that holds every "thing you can
--- browse to" on the site, arranged like a folder tree. For example:
+-- In plain language: before building the new structure, we clear away the
+-- old one. `drop table if exists ... cascade` means "delete this table,
+-- and also delete anything else that depends on it (like indexes or
+-- policies) — but don't complain if the table doesn't exist."
 --
---   Victoria (state)
---     └─ Royal Melbourne Hospital (hospital)
---          └─ Medicine (specialty)
---               └─ Cardiology (subspecialty)
---                    └─ Cardiology Registrar (role)
---
--- but also, in the same table:
---
---   Victoria (state)
---     └─ Royal Melbourne Hospital (hospital)
---          └─ Emergency (specialty)
---               └─ Emergency Registrar (role)     <- no subspecialty step!
---
--- Why one table instead of a separate table for states, a separate table
--- for hospitals, etc.? Because the real world isn't consistent — some
--- departments have a subspecialty step and some don't, and new levels or
--- exceptions will keep coming up. Rather than redesigning the database
--- every time reality doesn't fit a fixed number of layers, every row
--- simply points at its parent row, and the tree can bend however it needs
--- to. A row with no parent is a top-level "state".
---
--- Every row says what kind of thing it is (its "level"), and — except for
--- states, which sit at the very top — which row is "above" it in the tree
--- (its "parent"). Reviews always attach to a row where level = 'role',
--- i.e. the most specific, bottom-of-the-tree entry.
+-- This is destructive: any data currently sitting in these tables will be
+-- permanently lost when this file is run. That's expected here, since this
+-- file represents a full redesign of the database, not an incremental
+-- change.
 -- ============================================================================
 
-create table categories (
-  -- A unique internal ID for this row, generated automatically.
+drop table if exists bonus_answers cascade;
+drop table if exists reviews cascade;
+drop table if exists agencies cascade;
+drop table if exists categories cascade;
+
+
+-- ============================================================================
+-- 1. POSITIONS — the flat list of job seniority/types
+-- ============================================================================
+--
+-- In plain language: a short, controlled list of the "levels" a doctor's job
+-- can be at, independent of specialty or hospital — e.g. RMO, Registrar,
+-- Advanced Trainee, Fellow, Consultant. Every job picks exactly one of
+-- these.
+-- ============================================================================
+
+create table positions (
+  -- A unique internal ID for this position, generated automatically.
   id uuid primary key default gen_random_uuid(),
 
-  -- The human-readable name of this entry, e.g. "Victoria",
-  -- "Royal Melbourne Hospital", "Cardiology", "Cardiology Registrar".
-  name text not null,
-
-  -- Which row is this one "underneath" in the tree? For example, the
-  -- "Cardiology" row's parent_id would point at the "Medicine" row.
-  -- This is left empty (null) only for states, which are the top of the
-  -- tree and have nothing above them.
-  parent_id uuid references categories (id),
-
-  -- What kind of entry this row represents. Every row must be exactly one
-  -- of these five kinds, listed here in tree order from top to bottom.
-  level text not null check (
-    level in ('state', 'hospital', 'specialty', 'subspecialty', 'role')
-  )
+  -- The position's name, e.g. "Registrar". Must be unique so the same
+  -- position can't accidentally be added twice.
+  name text not null unique
 );
-
--- Speeds up the very common question "what are the children of this
--- category?" (e.g. "show me every hospital in Victoria", or "show me
--- every specialty at Royal Melbourne Hospital"). Without this index,
--- finding a row's children means scanning the whole table.
-create index categories_parent_id_idx on categories (parent_id);
 
 
 -- ============================================================================
--- 2. AGENCIES — the list of locum agencies
+-- 2. SPECIALTIES — the list of medical specialties
+-- ============================================================================
+--
+-- In plain language: a short, controlled list of medical specialties, e.g.
+-- "Medicine", "Surgery", "Emergency". Every job picks exactly one.
+-- ============================================================================
+
+create table specialties (
+  -- A unique internal ID for this specialty, generated automatically.
+  id uuid primary key default gen_random_uuid(),
+
+  -- The specialty's name, e.g. "Emergency Medicine". Must be unique.
+  name text not null unique
+);
+
+
+-- ============================================================================
+-- 3. SUBSPECIALTIES — narrower specialties within a specialty
+-- ============================================================================
+--
+-- In plain language: some specialties break down further, e.g. "Medicine"
+-- contains "Cardiology" and "Respiratory". Each subspecialty belongs to
+-- exactly one parent specialty. Not every job has a subspecialty — it's
+-- optional (see the `jobs` table below).
+-- ============================================================================
+
+create table subspecialties (
+  -- A unique internal ID for this subspecialty, generated automatically.
+  id uuid primary key default gen_random_uuid(),
+
+  -- The subspecialty's name, e.g. "Cardiology".
+  name text not null,
+
+  -- Which specialty this subspecialty belongs to, e.g. "Cardiology"
+  -- belongs to "Medicine". Required — every subspecialty must sit under
+  -- exactly one specialty.
+  specialty_id uuid not null references specialties (id),
+
+  -- The same subspecialty name shouldn't be added twice under the same
+  -- specialty (e.g. two "Cardiology" rows both under "Medicine").
+  unique (specialty_id, name)
+);
+
+-- Speeds up "show me every subspecialty under this specialty" (e.g.
+-- populating a subspecialty dropdown once a specialty has been chosen).
+create index subspecialties_specialty_id_idx on subspecialties (specialty_id);
+
+
+-- ============================================================================
+-- 4. STATES — Australian states/territories
+-- ============================================================================
+--
+-- In plain language: a short, controlled list of states, e.g. "Victoria",
+-- "New South Wales". Every hospital belongs to exactly one state.
+-- ============================================================================
+
+create table states (
+  -- A unique internal ID for this state, generated automatically.
+  id uuid primary key default gen_random_uuid(),
+
+  -- The state's name, e.g. "Victoria". Must be unique.
+  name text not null unique
+);
+
+
+-- ============================================================================
+-- 5. HOSPITALS — the list of hospitals
+-- ============================================================================
+--
+-- In plain language: a short, controlled list of hospitals, each tagged
+-- with the state it's in, so the site can, for example, list every
+-- hospital in Victoria.
+-- ============================================================================
+
+create table hospitals (
+  -- A unique internal ID for this hospital, generated automatically.
+  id uuid primary key default gen_random_uuid(),
+
+  -- The hospital's name, e.g. "Royal Melbourne Hospital".
+  name text not null,
+
+  -- Which state this hospital is in. Required — every hospital must sit
+  -- under exactly one state.
+  state_id uuid not null references states (id),
+
+  -- The same hospital name shouldn't be added twice under the same state.
+  unique (state_id, name)
+);
+
+-- Speeds up "show me every hospital in this state" (e.g. populating a
+-- hospital dropdown once a state has been chosen).
+create index hospitals_state_id_idx on hospitals (state_id);
+
+
+-- ============================================================================
+-- 6. AGENCIES — the list of locum agencies
 -- ============================================================================
 --
 -- In plain language: a short, controlled list of locum agencies (the
@@ -106,42 +207,154 @@ create table agencies (
   -- A unique internal ID for this agency, generated automatically.
   id uuid primary key default gen_random_uuid(),
 
-  -- The agency's name, e.g. "Omega Medical Locums". Names must be unique
-  -- so the same agency can't accidentally be added twice.
+  -- The agency's name, e.g. "Omega Medical Locums". Must be unique.
   name text not null unique
 );
 
 
 -- ============================================================================
--- 3. REVIEWS — what locums actually say about a role
+-- 7. SHIFT_TYPES — the kinds of shift a review can describe
+-- ============================================================================
+--
+-- In plain language: a short, controlled list of shift kinds, e.g.
+-- "Regular day", "Long day", "Evening", "Night", "Weekend", "On-call
+-- off-site". A single review can describe several different shift types
+-- (see `review_duties` below), since one job often involves a mix of
+-- shifts.
+-- ============================================================================
+
+create table shift_types (
+  -- A unique internal ID for this shift type, generated automatically.
+  id uuid primary key default gen_random_uuid(),
+
+  -- The shift type's name, e.g. "Night". Must be unique.
+  name text not null unique
+);
+
+
+-- ============================================================================
+-- 8. DUTIES — the list of duties a reviewer can tick off
+-- ============================================================================
+--
+-- In plain language: a short, controlled list of duties/tasks that might
+-- come up during a shift, e.g. "Cannulation", "Ward cover", "Code blue
+-- response". Reviewers tick which duties applied to which shift type (see
+-- `review_duties` below).
+--
+-- A duty can optionally be tagged with a specialty. This is purely a menu
+-- convenience — it tells the review form "when someone is reviewing a
+-- Cardiology job, show this duty near the top of the list" so the list of
+-- duties on screen is shorter and more relevant. It is NOT a rule about
+-- which duties are allowed for which jobs, and it is NOT a way for a duty
+-- to "inherit" anything — a duty with no specialty tag (specialty_id is
+-- null) is a general duty available to every job, and even a
+-- specialty-tagged duty can still be selected on a review for a job in a
+-- different specialty if needed.
+-- ============================================================================
+
+create table duties (
+  -- A unique internal ID for this duty, generated automatically.
+  id uuid primary key default gen_random_uuid(),
+
+  -- The duty's name, e.g. "Cannulation".
+  name text not null,
+
+  -- Which specialty's review form this duty should be highlighted on, if
+  -- any. Left empty (null) for general duties that aren't specific to one
+  -- specialty. Again: this only affects which menu the duty is easy to
+  -- find in — it does not restrict or imply anything else.
+  specialty_id uuid references specialties (id)
+);
+
+-- Speeds up "show me the duties tagged for this specialty" when building
+-- the review form's duty menu.
+create index duties_specialty_id_idx on duties (specialty_id);
+
+
+-- ============================================================================
+-- 9. JOBS — a specific combination of position + specialty + hospital
+-- ============================================================================
+--
+-- In plain language: a "job" is one specific combination of choices — for
+-- example, "Registrar, Cardiology (under Medicine), at Royal Melbourne
+-- Hospital". Reviews are always attached to a job, never directly to a
+-- hospital or specialty on their own.
+--
+-- The same combination of position + specialty + subspecialty + hospital
+-- should only ever exist as one row — otherwise reviews for what is really
+-- the same job could end up split across two different "jobs" rows.
+-- ============================================================================
+
+create table jobs (
+  -- A unique internal ID for this job, generated automatically.
+  id uuid primary key default gen_random_uuid(),
+
+  -- The seniority/type of this job, e.g. "Registrar". Required.
+  position_id uuid not null references positions (id),
+
+  -- The specialty this job is in, e.g. "Medicine". Required.
+  specialty_id uuid not null references specialties (id),
+
+  -- The subspecialty this job is in, e.g. "Cardiology", if applicable.
+  -- Left empty (null) when the job doesn't have a subspecialty (e.g. a
+  -- general Emergency Medicine job).
+  subspecialty_id uuid references subspecialties (id),
+
+  -- Which hospital this job is at. Required.
+  hospital_id uuid not null references hospitals (id),
+
+  -- When this job entry was first created. Filled in automatically.
+  created_at timestamptz not null default now(),
+
+  -- Prevents the exact same combination of position + specialty +
+  -- subspecialty + hospital being entered as two separate jobs. Postgres
+  -- treats two nulls as distinct by default for a plain unique constraint,
+  -- but since subspecialty_id is part of a small, controlled combination
+  -- here, in practice each distinct real-world job should only be created
+  -- once — the application layer should look for an existing matching job
+  -- before creating a new one.
+  unique (position_id, specialty_id, subspecialty_id, hospital_id)
+);
+
+-- The following indexes each speed up filtering jobs by a single
+-- attribute, e.g. "show me every job that's a Registrar role", or "show me
+-- every job at this hospital" — the kinds of filters the browse/search
+-- pages need.
+create index jobs_position_id_idx on jobs (position_id);
+create index jobs_specialty_id_idx on jobs (specialty_id);
+create index jobs_subspecialty_id_idx on jobs (subspecialty_id);
+create index jobs_hospital_id_idx on jobs (hospital_id);
+
+
+-- ============================================================================
+-- 10. REVIEWS — what locums actually say about a job
 -- ============================================================================
 --
 -- In plain language: each row here is one review, written by one locum,
--- about one specific role (e.g. "Cardiology Registrar at Royal Melbourne
--- Hospital"). It covers three kinds of information:
+-- about one specific job (e.g. "Cardiology Registrar at Royal Melbourne
+-- Hospital"). It covers:
 --
---   a) Nine core "yes/no-ish" question scores (1 to 5, like a star
---      rating) — things like "would you work here again?" and "did you
---      feel safe?".
---   b) Two "gradient" scores (also 1 to 5) that describe *how much* of
---      something there was, rather than whether it was good or bad —
---      e.g. workload_intensity of 1 might mean extremely busy, 5 very quiet.
---   c) Plain facts about the job — pay, roster type, shift times,
---      whether a car/accommodation/flights were provided, and so on.
---
--- Plus two optional free-text boxes for anything that doesn't fit into a
--- score or a fact, and a timestamp recording when the review was posted.
+--   a) Nine core question scores (1 to 5, like a star rating) — things
+--      like "would you work here again?" and "did you feel safe?".
+--   b) Pay details — the rate, whether nights pay differently, whether
+--      it's hourly or a fixed shift rate, and whether overtime is paid.
+--   c) Plain facts about the job — whether a car/accommodation/flights
+--      were provided, what the shift times and after-hours load were
+--      like, what systems the hospital uses for notes and medication
+--      charts, and the dates worked.
+--   d) Two optional free-text boxes for anything that doesn't fit into a
+--      score or a fact.
 -- ============================================================================
 
 create table reviews (
   -- A unique internal ID for this review, generated automatically.
   id uuid primary key default gen_random_uuid(),
 
-  -- Which role this review is about. This must point at a row in
-  -- `categories` whose level is 'role' (e.g. "Cardiology Registrar") —
-  -- reviews are never attached to a whole hospital or specialty directly,
-  -- only to a specific role within it.
-  role_id uuid not null references categories (id),
+  -- Which job this review is about.
+  job_id uuid not null references jobs (id),
+
+  -- When this review was submitted. Filled in automatically.
+  created_at timestamptz not null default now(),
 
   -- --------------------------------------------------------------------
   -- Core question scores — nine questions, each answered on a 1–5 scale
@@ -151,10 +364,10 @@ create table reviews (
   -- "Overall, was this a good job?"
   overall_good_job smallint not null check (overall_good_job between 1 and 5),
 
-  -- "Would you work this role again?"
+  -- "Would you work this job again?"
   would_work_again smallint not null check (would_work_again between 1 and 5),
 
-  -- "Would you recommend this role to another locum?"
+  -- "Would you recommend this job to another locum?"
   would_recommend smallint not null check (would_recommend between 1 and 5),
 
   -- "I received the supervision I needed" — agree/disagree, from
@@ -177,47 +390,8 @@ create table reviews (
   paid_correctly smallint not null check (paid_correctly between 1 and 5),
 
   -- --------------------------------------------------------------------
-  -- Descriptive gradient scores — these describe the *degree* of
-  -- something (light-to-heavy), not whether it was good or bad.
+  -- Pay details.
   -- --------------------------------------------------------------------
-
-  -- How busy the workload felt, from 1 (extremely busy) to
-  -- 5 (very quiet).
-  workload_intensity smallint not null check (workload_intensity between 1 and 5),
-
-  -- How much hands-on supervision was actually provided, from 1 (very
-  -- little oversight, worked independently) to 5 (very closely
-  -- supervised).
-  supervision_intensity smallint not null check (supervision_intensity between 1 and 5),
-
-  -- --------------------------------------------------------------------
-  -- Facts about the job — plain, objective details rather than opinions.
-  -- --------------------------------------------------------------------
-
-  -- The date the locum's placement in this role started, if known. This
-  -- is when the work actually happened, which is not the same as
-  -- created_at (when the review was posted) — a review might be posted
-  -- weeks or months after the work took place. Used later to weight
-  -- reviews by recency.
-  worked_from date,
-
-  -- The date the locum's placement in this role ended, if known. Used
-  -- alongside worked_from to work out how long the placement lasted, for
-  -- duration weighting.
-  worked_to date,
-
-  -- Whether the roster (shift schedule) was fixed (same shifts every
-  -- week) or rotating (shifts change week to week).
-  roster_type text not null check (roster_type in ('fixed', 'rotating')),
-
-  -- The typical shift times, written as free text since rosters vary a
-  -- lot between hospitals (e.g. "7am–5pm weekdays" or "10-hour rotating
-  -- shifts including nights").
-  shift_times text,
-
-  -- What after-hours / on-call work looked like, as free text (e.g.
-  -- "1 in 4 on-call weekends" or "no after-hours work required").
-  after_hours text,
 
   -- The pay rate. Paired with pay_unit below to say whether this is a
   -- rate "per hour" or "per day". Uses a decimal-friendly type so cents
@@ -235,9 +409,20 @@ create table reviews (
   -- not known.
   night_pay_amount numeric(10, 2),
 
-  -- Which agency placed the locum in this role, if any. Left empty
-  -- (null) for direct-hire roles with no agency involved.
+  -- Whether pay is worked out hourly, or as a fixed rate per shift
+  -- regardless of how long the shift runs.
+  rate_type text not null check (rate_type in ('hourly', 'fixed_shift_rate')),
+
+  -- Whether overtime worked beyond the rostered shift was paid.
+  overtime_paid boolean not null default false,
+
+  -- Which agency placed the locum in this job, if any. Left empty (null)
+  -- for direct-hire jobs with no agency involved.
   agency_id uuid references agencies (id),
+
+  -- --------------------------------------------------------------------
+  -- Facts about the job — plain, objective details rather than opinions.
+  -- --------------------------------------------------------------------
 
   -- Whether a car was provided as part of the placement.
   car_provided boolean not null default false,
@@ -245,13 +430,36 @@ create table reviews (
   -- Whether accommodation was provided as part of the placement.
   accommodation_provided boolean not null default false,
 
+  -- Whether flights were provided as part of the placement.
+  flights_provided boolean not null default false,
+
   -- How good the provided accommodation was, from 1 (poor) to 5
   -- (excellent). Only meaningful — and only expected to be filled in —
   -- when accommodation_provided is true; left empty (null) otherwise.
   accommodation_quality smallint check (accommodation_quality between 1 and 5),
 
-  -- Whether flights were provided as part of the placement.
-  flights_provided boolean not null default false,
+  -- The typical shift times, written as free text since rosters vary a
+  -- lot between hospitals (e.g. "7am–5pm weekdays" or "10-hour rotating
+  -- shifts including nights").
+  shift_times text,
+
+  -- What after-hours / on-call work looked like, as free text (e.g.
+  -- "1 in 4 on-call weekends" or "no after-hours work required").
+  after_hours text,
+
+  -- What system the hospital uses for clinical notes — fully on paper,
+  -- a fully electronic medical record (iEMR), or a mix of both.
+  notes_system text not null check (notes_system in ('paper', 'iemr', 'hybrid')),
+
+  -- What system the hospital uses for medication charts — paper,
+  -- electronic, or a hybrid of both.
+  med_charts text not null check (med_charts in ('paper', 'electronic', 'hybrid')),
+
+  -- The date the locum's placement in this job started.
+  worked_from date not null,
+
+  -- The date the locum's placement in this job ended.
+  worked_to date not null,
 
   -- --------------------------------------------------------------------
   -- Free text — optional, open-ended fields.
@@ -262,24 +470,58 @@ create table reviews (
   wish_youd_known text,
 
   -- Any other feedback that doesn't fit into the questions above.
-  other_feedback text,
-
-  -- --------------------------------------------------------------------
-  -- Bookkeeping.
-  -- --------------------------------------------------------------------
-
-  -- When this review was submitted. Filled in automatically.
-  created_at timestamptz not null default now()
+  other_feedback text
 );
 
 -- Speeds up the very common question "show me all the reviews for this
--- role" (e.g. a role's page listing every review left about it). Without
--- this index, finding a role's reviews means scanning the whole table.
-create index reviews_role_id_idx on reviews (role_id);
+-- job" (e.g. a job's page listing every review left about it). Without
+-- this index, finding a job's reviews means scanning the whole table.
+create index reviews_job_id_idx on reviews (job_id);
+
+-- Speeds up "which agency was used for this review" style lookups, e.g.
+-- when showing agency-level statistics.
+create index reviews_agency_id_idx on reviews (agency_id);
 
 
 -- ============================================================================
--- 4. BONUS_ANSWERS — optional extra questions attached to a review
+-- 11. REVIEW_DUTIES — which (shift type, duty) pairs a review ticked
+-- ============================================================================
+--
+-- In plain language: while filling in a review, a locum can say "on Night
+-- shifts, I did Cannulation and Ward cover; on Weekend shifts, I did Ward
+-- cover and Code blue response". Each of those individual pairings — one
+-- shift type plus one duty — becomes its own row here, all linked back to
+-- the same review. A single review can have many rows, since it can cover
+-- many shift types and many duties per shift type.
+-- ============================================================================
+
+create table review_duties (
+  -- A unique internal ID for this row, generated automatically.
+  id uuid primary key default gen_random_uuid(),
+
+  -- Which review this duty entry belongs to. If the review is deleted,
+  -- its duty entries are deleted along with it.
+  review_id uuid not null references reviews (id) on delete cascade,
+
+  -- Which shift type this duty was performed on, e.g. "Night".
+  shift_type_id uuid not null references shift_types (id),
+
+  -- Which duty was performed, e.g. "Cannulation".
+  duty_id uuid not null references duties (id)
+);
+
+-- Speeds up "show me all the ticked (shift type, duty) pairs for this
+-- review" (e.g. when displaying a full review).
+create index review_duties_review_id_idx on review_duties (review_id);
+
+-- Speeds up statistics questions like "how often is this duty ticked
+-- across all reviews" or "how often does this shift type come up".
+create index review_duties_shift_type_id_idx on review_duties (shift_type_id);
+create index review_duties_duty_id_idx on review_duties (duty_id);
+
+
+-- ============================================================================
+-- 12. BONUS_ANSWERS — optional extra questions attached to a review
 -- ============================================================================
 --
 -- In plain language: besides the fixed set of questions every review
@@ -321,3 +563,74 @@ create table bonus_answers (
 -- Speeds up "show me all the bonus answers for this review" (e.g. when
 -- displaying a full review, including its bonus question answers).
 create index bonus_answers_review_id_idx on bonus_answers (review_id);
+
+
+-- ============================================================================
+-- ROW LEVEL SECURITY — who is allowed to read/write what
+-- ============================================================================
+--
+-- In plain language: "Row Level Security" (RLS) is a Postgres feature that
+-- lets us control, table by table, who can read or write which rows. Until
+-- RLS is turned on for a table, Supabase locks it down by default so
+-- nobody (other than an admin) can touch it.
+--
+-- Here, we turn RLS on for every table, then add one policy per table that
+-- allows anyone (including anonymous website visitors) to *read* (select)
+-- all rows — this is what lets the public site display positions,
+-- specialties, hospitals, jobs, reviews, and so on.
+--
+-- We deliberately do NOT add any policies for inserting, updating, or
+-- deleting rows yet. That means, for now, only requests made with a
+-- privileged Supabase key (not the public site) can write data. Write
+-- access will be designed and added in a later phase, once it's clear
+-- exactly who should be allowed to submit what.
+-- ============================================================================
+
+alter table positions enable row level security;
+alter table specialties enable row level security;
+alter table subspecialties enable row level security;
+alter table states enable row level security;
+alter table hospitals enable row level security;
+alter table agencies enable row level security;
+alter table shift_types enable row level security;
+alter table duties enable row level security;
+alter table jobs enable row level security;
+alter table reviews enable row level security;
+alter table review_duties enable row level security;
+alter table bonus_answers enable row level security;
+
+create policy "Public can read positions" on positions
+  for select using (true);
+
+create policy "Public can read specialties" on specialties
+  for select using (true);
+
+create policy "Public can read subspecialties" on subspecialties
+  for select using (true);
+
+create policy "Public can read states" on states
+  for select using (true);
+
+create policy "Public can read hospitals" on hospitals
+  for select using (true);
+
+create policy "Public can read agencies" on agencies
+  for select using (true);
+
+create policy "Public can read shift_types" on shift_types
+  for select using (true);
+
+create policy "Public can read duties" on duties
+  for select using (true);
+
+create policy "Public can read jobs" on jobs
+  for select using (true);
+
+create policy "Public can read reviews" on reviews
+  for select using (true);
+
+create policy "Public can read review_duties" on review_duties
+  for select using (true);
+
+create policy "Public can read bonus_answers" on bonus_answers
+  for select using (true);
