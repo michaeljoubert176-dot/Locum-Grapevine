@@ -2,9 +2,11 @@ import type { ReviewRow } from "@/lib/reviews";
 
 function formatMonthYear(dateString: string): string {
   const [year, month] = dateString.split("-").map(Number);
-  return new Intl.DateTimeFormat("en-AU", { month: "short", year: "numeric", timeZone: "UTC" }).format(
-    Date.UTC(year, month - 1, 1)
-  );
+  return new Intl.DateTimeFormat("en-AU", {
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(Date.UTC(year, month - 1, 1));
 }
 
 function formatWorkedPeriod(review: ReviewRow): string {
@@ -14,31 +16,30 @@ function formatWorkedPeriod(review: ReviewRow): string {
     return from === to ? `Worked ${from}` : `Worked ${from} – ${to}`;
   }
   if (review.worked_from) {
-    return `Worked from ${formatMonthYear(review.worked_from)}`;
+    return `Worked from ${formatMonthYear(review.worked_from)} (ongoing)`;
   }
   return "Dates not provided";
 }
 
+// Deliberately no field labels here — just the dates, then whatever free
+// text the reviewer wrote, wish_youd_known first and other_feedback as a
+// following paragraph. Either (or both) may be missing.
 export default function ReviewCard({ review }: { review: ReviewRow }) {
-  const hasWishYoudKnown = Boolean(review.wish_youd_known?.trim());
-  const hasOtherFeedback = Boolean(review.other_feedback?.trim());
+  const wishYoudKnown = review.wish_youd_known?.trim();
+  const otherFeedback = review.other_feedback?.trim();
 
   return (
     <li className="rounded-2xl border border-line border-l-4 border-l-purple bg-white p-5">
-      <p className="text-xs tracking-wide text-amber-accent uppercase">{formatWorkedPeriod(review)}</p>
+      <p className="text-xs tracking-wide text-amber-accent uppercase">
+        {formatWorkedPeriod(review)}
+      </p>
 
-      {hasWishYoudKnown && (
-        <div className="mt-3">
-          <p className="text-sm font-semibold text-ink">What I wish I&apos;d known</p>
-          <p className="mt-1 text-sm leading-relaxed text-ink-soft">{review.wish_youd_known}</p>
-        </div>
+      {wishYoudKnown && <p className="mt-3 text-sm leading-relaxed text-ink">{wishYoudKnown}</p>}
+      {otherFeedback && (
+        <p className="mt-3 text-sm leading-relaxed text-ink-soft">{otherFeedback}</p>
       )}
-
-      {hasOtherFeedback && (
-        <div className="mt-3">
-          <p className="text-sm font-semibold text-ink">Other feedback</p>
-          <p className="mt-1 text-sm leading-relaxed text-ink-soft">{review.other_feedback}</p>
-        </div>
+      {!wishYoudKnown && !otherFeedback && (
+        <p className="mt-3 text-sm text-ink-soft italic">No written feedback provided.</p>
       )}
     </li>
   );

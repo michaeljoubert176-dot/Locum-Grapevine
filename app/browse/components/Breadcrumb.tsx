@@ -1,10 +1,12 @@
 import Link from "next/link";
-import type { CategoryRow } from "@/lib/categories";
+import { jobTitle, type JobRow } from "@/lib/jobs";
 
-// The full path from the top of the browse tree down to (and including)
-// the category currently being viewed. Every ancestor is a link; the
-// current category is plain text, since you're already there.
-export default function Breadcrumb({ path }: { path: CategoryRow[] }) {
+// A job has no ancestor pages of its own (there's no dedicated "hospital"
+// or "state" page to link to), so state and hospital are shown as plain
+// text steps — only "Browse" itself and the current job are real stops.
+export default function Breadcrumb({ job }: { job: JobRow }) {
+  const title = jobTitle(job);
+
   return (
     <nav aria-label="Breadcrumb" className="text-sm">
       <ol role="list" className="flex flex-wrap items-center gap-1.5 text-ink-soft">
@@ -12,28 +14,21 @@ export default function Breadcrumb({ path }: { path: CategoryRow[] }) {
           <Link href="/browse" className="rounded-sm text-green hover:underline">
             Browse
           </Link>
-          {path.length > 0 && <span aria-hidden="true">/</span>}
+          <span aria-hidden="true">/</span>
         </li>
-        {path.map((category, index) => {
-          const isLast = index === path.length - 1;
-          return (
-            <li key={category.id} className="flex items-center gap-1.5">
-              {isLast ? (
-                <span aria-current="page" className="font-medium text-ink">
-                  {category.name}
-                </span>
-              ) : (
-                <Link
-                  href={`/browse/${category.id}`}
-                  className="rounded-sm text-green hover:underline"
-                >
-                  {category.name}
-                </Link>
-              )}
-              {!isLast && <span aria-hidden="true">/</span>}
-            </li>
-          );
-        })}
+        <li className="flex items-center gap-1.5">
+          <span>{job.stateName}</span>
+          <span aria-hidden="true">/</span>
+        </li>
+        <li className="flex items-center gap-1.5">
+          <span>{job.hospitalName}</span>
+          <span aria-hidden="true">/</span>
+        </li>
+        <li>
+          <span aria-current="page" className="font-medium text-ink">
+            {title}
+          </span>
+        </li>
       </ol>
     </nav>
   );
