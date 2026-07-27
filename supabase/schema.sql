@@ -482,8 +482,9 @@ create table reviews (
   -- accepted it?" — optional.
   wish_youd_known text,
 
-  -- Any other feedback that doesn't fit into the questions above.
-  other_feedback text
+  -- A general comment about the job overall, separate from the "wish
+  -- you'd known" answer above — optional.
+  overall_comment text
 );
 
 -- Speeds up the very common question "show me all the reviews for this
