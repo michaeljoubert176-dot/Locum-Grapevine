@@ -37,7 +37,7 @@ export type ReviewRow = {
   flights_provided: boolean;
 
   wish_youd_known: string | null;
-  other_feedback: string | null;
+  overall_comment: string | null;
 
   duties: ReviewDuty[];
 };
@@ -56,7 +56,7 @@ const REVIEW_SELECT = `
   workload_manageable, information_accurate, felt_welcome, paid_correctly,
   pay_amount, pay_unit, night_rate_differs, night_pay_amount, rate_type, overtime_paid,
   car_provided, accommodation_provided, flights_provided,
-  wish_youd_known, other_feedback,
+  wish_youd_known, overall_comment,
   review_duties ( shift_types ( name ), duties ( name ) )
 `;
 
@@ -170,6 +170,41 @@ export function sortReviewsNewestFirst(reviews: ReviewRow[]): ReviewRow[] {
     if (b.worked_from) return 1;
     return b.created_at.localeCompare(a.created_at);
   });
+}
+
+// The mirror of sortReviewsNewestFirst: oldest worked_from first, with
+// reviews missing a worked_from still pushed to the end rather than
+// treated as "oldest" — we don't know when they happened either way.
+function sortReviewsOldestFirst(reviews: ReviewRow[]): ReviewRow[] {
+  return [...reviews].sort((a, b) => {
+    if (a.worked_from && b.worked_from) {
+      return a.worked_from.localeCompare(b.worked_from);
+    }
+    if (a.worked_from) return -1;
+    if (b.worked_from) return 1;
+    return a.created_at.localeCompare(b.created_at);
+  });
+}
+
+export type OverallCommentSort = "newest" | "oldest" | "score-desc" | "score-asc";
+
+// Sorts reviews for the "Overall comments" list: by worked_from (newest or
+// oldest first) or by the overall_good_job score (highest or lowest
+// first).
+export function sortReviewsForOverallComments(
+  reviews: ReviewRow[],
+  sort: OverallCommentSort
+): ReviewRow[] {
+  switch (sort) {
+    case "newest":
+      return sortReviewsNewestFirst(reviews);
+    case "oldest":
+      return sortReviewsOldestFirst(reviews);
+    case "score-desc":
+      return [...reviews].sort((a, b) => b.overall_good_job - a.overall_good_job);
+    case "score-asc":
+      return [...reviews].sort((a, b) => a.overall_good_job - b.overall_good_job);
+  }
 }
 
 export type PayRange = { min: number; max: number };

@@ -21,36 +21,21 @@ function formatWorkedPeriod(review: ReviewRow): string {
   return "Dates not provided";
 }
 
-// The dates, then each free-text answer under its own label —
-// wish_youd_known first, then other_feedback. Either (or both) may be
-// missing; a label is only shown when its answer is present.
+// Only the "wish I'd known" answer is shown here — a reviewer's overall
+// comment lives in the Overall comments list under the ratings section
+// instead. ReviewsList only ever passes reviews that have a non-empty
+// wish_youd_known, so it's always present by the time it reaches here.
 export default function ReviewCard({ review }: { review: ReviewRow }) {
-  const wishYoudKnown = review.wish_youd_known?.trim();
-  const otherFeedback = review.other_feedback?.trim();
-
   return (
     <li className="rounded-2xl border border-line border-l-4 border-l-purple bg-white p-5">
       <p className="text-xs tracking-wide text-amber-accent uppercase">
         {formatWorkedPeriod(review)}
       </p>
 
-      {wishYoudKnown && (
-        <div className="mt-3">
-          <p className="text-sm font-semibold text-ink">What I wish I&apos;d known</p>
-          <p className="mt-1 text-sm leading-relaxed text-ink-soft">{wishYoudKnown}</p>
-        </div>
-      )}
-
-      {otherFeedback && (
-        <div className="mt-3">
-          <p className="text-sm font-semibold text-ink">Other feedback</p>
-          <p className="mt-1 text-sm leading-relaxed text-ink-soft">{otherFeedback}</p>
-        </div>
-      )}
-
-      {!wishYoudKnown && !otherFeedback && (
-        <p className="mt-3 text-sm text-ink-soft italic">No written feedback provided.</p>
-      )}
+      <div className="mt-3">
+        <p className="text-sm font-semibold text-ink">What I wish I&apos;d known</p>
+        <p className="mt-1 text-sm leading-relaxed text-ink-soft">{review.wish_youd_known}</p>
+      </div>
     </li>
   );
 }
