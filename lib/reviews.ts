@@ -25,16 +25,14 @@ export type ReviewRow = {
   felt_welcome: number;
   paid_correctly: number;
 
-  pay_amount: string;
-  pay_unit: "hour" | "day";
-  night_rate_differs: boolean;
-  night_pay_amount: string | null;
   rate_type: "hourly" | "fixed_shift_rate";
   overtime_paid: boolean;
 
   car_provided: boolean;
-  accommodation_provided: boolean;
+  accommodation_hospital_available: boolean;
+  accommodation_private_available: boolean;
   flights_provided: boolean;
+  weekends_required: boolean;
 
   wish_youd_known: string | null;
   overall_comment: string | null;
@@ -54,8 +52,9 @@ const REVIEW_SELECT = `
   id, created_at, worked_from, worked_to,
   overall_good_job, would_work_again, would_recommend, supervision_needed, felt_safe,
   workload_manageable, information_accurate, felt_welcome, paid_correctly,
-  pay_amount, pay_unit, night_rate_differs, night_pay_amount, rate_type, overtime_paid,
-  car_provided, accommodation_provided, flights_provided,
+  rate_type, overtime_paid,
+  car_provided, accommodation_hospital_available, accommodation_private_available,
+  flights_provided, weekends_required,
   wish_youd_known, overall_comment,
   review_duties ( shift_types ( name ), duties ( name ) )
 `;
@@ -207,49 +206,24 @@ export function sortReviewsForOverallComments(
   }
 }
 
-export type PayRange = { min: number; max: number };
-
 export type RateTypeSummary = "hourly" | "fixed_shift_rate" | "mixed";
 
+// Pay-per-shift-type figures now live in `review_shifts` rather than as flat
+// columns on `reviews` (see the schema spec) — the per-shift-type rate
+// ranges and hourly conversion are part of the Build B display work, not
+// built yet. This summary is limited to the job-level facts that remain on
+// `reviews` itself.
 export type PaySummary = {
-  dayRate: PayRange | null;
-  hourlyRate: PayRange | null;
-  nightRate: PayRange | null;
   rateType: RateTypeSummary;
 };
 
-function payRange(amounts: number[]): PayRange | null {
-  if (amounts.length === 0) return null;
-  return { min: Math.min(...amounts), max: Math.max(...amounts) };
-}
-
-// Pools every review's pay facts into one summary. Day rate and hourly
-// rate are kept as separate ranges rather than converted into one another,
-// since turning an hourly rate into a day rate would mean guessing a shift
-// length that isn't recorded anywhere.
 export function summarizePay(reviews: ReviewRow[]): PaySummary {
-  const dayAmounts = reviews.filter((r) => r.pay_unit === "day").map((r) => Number(r.pay_amount));
-  const hourlyAmounts = reviews.filter((r) => r.pay_unit === "hour").map((r) => Number(r.pay_amount));
-
-  // A review's night rate is its night_pay_amount when it reports one that
-  // differs, or simply its regular pay_amount otherwise — so the night
-  // rate always has a figure to show, the same as the day rate whenever it
-  // doesn't actually differ.
-  const nightAmounts = reviews
-    .filter((r) => !r.night_rate_differs || r.night_pay_amount !== null)
-    .map((r) => Number(r.night_rate_differs ? r.night_pay_amount : r.pay_amount));
-
   const hourlyCount = reviews.filter((r) => r.rate_type === "hourly").length;
   const fixedCount = reviews.filter((r) => r.rate_type === "fixed_shift_rate").length;
   const rateType: RateTypeSummary =
     hourlyCount > 0 && fixedCount > 0 ? "mixed" : fixedCount > 0 ? "fixed_shift_rate" : "hourly";
 
-  return {
-    dayRate: payRange(dayAmounts),
-    hourlyRate: payRange(hourlyAmounts),
-    nightRate: payRange(nightAmounts),
-    rateType,
-  };
+  return { rateType };
 }
 
 export function formatMoney(amount: number): string {
@@ -287,8 +261,18 @@ export function summarizeDutiesByShiftType(reviews: ReviewRow[]): ShiftTypeDutie
 // something that's inconsistent in practice.
 export function majorityProvided(
   reviews: ReviewRow[],
-  key: "car_provided" | "accommodation_provided" | "flights_provided" | "overtime_paid"
+  key: "car_provided" | "flights_provided" | "overtime_paid"
 ): boolean {
   const providedCount = reviews.filter((r) => r[key]).length;
+  return providedCount > reviews.length - providedCount;
+}
+
+// Same majority rule as majorityProvided, but for accommodation — which is
+// now two booleans (hospital-available / private-available) rather than one
+// flat flag, since a job can offer neither, either, or both kinds.
+export function majorityAccommodationProvided(reviews: ReviewRow[]): boolean {
+  const providedCount = reviews.filter(
+    (r) => r.accommodation_hospital_available || r.accommodation_private_available
+  ).length;
   return providedCount > reviews.length - providedCount;
 }

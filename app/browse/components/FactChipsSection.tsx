@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import {
-  formatMoney,
+  majorityAccommodationProvided,
   majorityProvided,
   summarizeDutiesByShiftType,
   summarizePay,
@@ -32,7 +32,7 @@ export default function FactChipsSection({ reviews }: { reviews: ReviewRow[] }) 
   const duties = summarizeDutiesByShiftType(reviews);
 
   const car = majorityProvided(reviews, "car_provided");
-  const accommodation = majorityProvided(reviews, "accommodation_provided");
+  const accommodation = majorityAccommodationProvided(reviews);
   const flights = majorityProvided(reviews, "flights_provided");
   const overtimePaid = majorityProvided(reviews, "overtime_paid");
 
@@ -64,39 +64,17 @@ export default function FactChipsSection({ reviews }: { reviews: ReviewRow[] }) 
   );
 }
 
+// Per-shift-type rate ranges (the "$X–$Y / hour" headline) now depend on
+// review_shifts, which isn't wired up to the display yet — that's Build B.
+// For now the chip and panel just surface the job-level rate type.
 function formatPayHeadline(pay: PaySummary): string {
-  if (pay.dayRate) {
-    return pay.dayRate.min === pay.dayRate.max
-      ? `${formatMoney(pay.dayRate.min)} / day`
-      : `${formatMoney(pay.dayRate.min)}–${formatMoney(pay.dayRate.max)} / day`;
-  }
-  if (pay.hourlyRate) {
-    return pay.hourlyRate.min === pay.hourlyRate.max
-      ? `${formatMoney(pay.hourlyRate.min)} / hour`
-      : `${formatMoney(pay.hourlyRate.min)}–${formatMoney(pay.hourlyRate.max)} / hour`;
-  }
-  return "Pay";
+  return RATE_TYPE_LABEL[pay.rateType];
 }
 
 function PayPanel({ pay, overtimePaid }: { pay: PaySummary; overtimePaid: boolean }) {
   return (
     <div className="mt-4 rounded-2xl border border-line bg-white p-5">
       <dl className="grid gap-4 sm:grid-cols-2">
-        {pay.dayRate && (
-          <PayStat label="Day rate" value={`${formatMoney(pay.dayRate.min)} – ${formatMoney(pay.dayRate.max)}`} />
-        )}
-        {pay.hourlyRate && (
-          <PayStat
-            label="Hourly rate"
-            value={`${formatMoney(pay.hourlyRate.min)} – ${formatMoney(pay.hourlyRate.max)}`}
-          />
-        )}
-        {pay.nightRate && (
-          <PayStat
-            label="Night rate"
-            value={`${formatMoney(pay.nightRate.min)} – ${formatMoney(pay.nightRate.max)}`}
-          />
-        )}
         <PayStat label="Rate type" value={RATE_TYPE_LABEL[pay.rateType]} />
       </dl>
 

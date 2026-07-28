@@ -44,8 +44,9 @@
 --     9. jobs             — a specific combination of position + specialty
 --                            (+ optional subspecialty) + hospital.
 --    10. reviews          — a review a locum leaves about a job.
---    11. review_duties    — which (shift type, duty) pairs a review ticked.
---    12. bonus_answers    — optional extra question answers on a review.
+--    11. review_shifts    — per (review, shift type) pay and hours data.
+--    12. review_duties    — which (shift type, duty) pairs a review ticked.
+--    13. bonus_answers    — optional extra question answers on a review.
 --
 -- This file only defines the *structure* of the database, and turns on
 -- baseline security (Row Level Security with public read-only access — see
@@ -345,11 +346,13 @@ create unique index jobs_unique_combination_idx on jobs (
 --
 --   a) Nine core question scores (1 to 5, like a star rating) — things
 --      like "would you work here again?" and "did you feel safe?".
---   b) Pay details — the rate, whether nights pay differently, whether
---      it's hourly or a fixed shift rate, and whether overtime is paid.
+--   b) Job-level pay/roster facts — the CONTRACT payment style (hourly or
+--      fixed per-shift rate) and whether overtime is paid. The actual pay
+--      figures and hours now live per shift type in `review_shifts` (see
+--      below) rather than as flat columns here.
 --   c) Plain facts about the job — whether a car/accommodation/flights
---      were provided, what the shift times and after-hours load were
---      like, what systems the hospital uses for notes and medication
+--      were provided, which kind(s) of accommodation, whether weekends are
+--      required, what systems the hospital uses for notes and medication
 --      charts, and the dates worked.
 --   d) Two optional free-text boxes for anything that doesn't fit into a
 --      score or a fact.
@@ -400,26 +403,19 @@ create table reviews (
 
   -- --------------------------------------------------------------------
   -- Pay details.
+  --
+  -- The actual pay figures are no longer stored here as flat columns —
+  -- they're captured per shift type in `review_shifts` below (rate_amount,
+  -- rostered_hours, actual_hours), since a job can pay differently per
+  -- shift type (day vs night vs weekend, etc). What's left here are the
+  -- two job-level facts that apply across every shift type on this job.
   -- --------------------------------------------------------------------
 
-  -- The pay rate. Paired with pay_unit below to say whether this is a
-  -- rate "per hour" or "per day". Uses a decimal-friendly type so cents
-  -- aren't lost.
-  pay_amount numeric(10, 2) not null,
-
-  -- Whether pay_amount is a rate per hour or per day.
-  pay_unit text not null check (pay_unit in ('hour', 'day')),
-
-  -- Whether the pay rate is different for night shifts.
-  night_rate_differs boolean not null default false,
-
-  -- The night-shift pay rate, if it differs from the standard rate. Left
-  -- empty (null) when night_rate_differs is false, or when it's simply
-  -- not known.
-  night_pay_amount numeric(10, 2),
-
   -- Whether pay is worked out hourly, or as a fixed rate per shift
-  -- regardless of how long the shift runs.
+  -- regardless of how long the shift runs. This is the CONTRACT payment
+  -- style — one per job — and tells LG how to interpret each
+  -- review_shifts.rate_amount (LG converts fixed-shift rates to hourly by
+  -- dividing by rostered_hours).
   rate_type text not null check (rate_type in ('hourly', 'fixed_shift_rate')),
 
   -- Whether overtime worked beyond the rostered shift was paid.
@@ -433,28 +429,34 @@ create table reviews (
   -- Facts about the job — plain, objective details rather than opinions.
   -- --------------------------------------------------------------------
 
-  -- Whether a car was provided as part of the placement.
+  -- Whether a car was provided/reimbursed as part of the placement (i.e.
+  -- whether this was AVAILABLE to the reviewer).
   car_provided boolean not null default false,
 
-  -- Whether accommodation was provided as part of the placement.
-  accommodation_provided boolean not null default false,
+  -- Whether hospital-provided accommodation was available to the
+  -- reviewer. Together with accommodation_private_available below, this
+  -- replaces the old single accommodation_provided flag — a job can offer
+  -- neither, hospital-only, private-only, or both kinds.
+  accommodation_hospital_available boolean not null default false,
 
-  -- Whether flights were provided as part of the placement.
+  -- Whether privately-arranged accommodation (e.g. reimbursed) was
+  -- available to the reviewer.
+  accommodation_private_available boolean not null default false,
+
+  -- Whether flights were provided/reimbursed as part of the placement
+  -- (i.e. whether this was AVAILABLE to the reviewer).
   flights_provided boolean not null default false,
 
   -- How good the provided accommodation was, from 1 (poor) to 5
   -- (excellent). Only meaningful — and only expected to be filled in —
-  -- when accommodation_provided is true; left empty (null) otherwise.
+  -- when one of the two accommodation booleans above is true; left empty
+  -- (null) otherwise.
   accommodation_quality smallint check (accommodation_quality between 1 and 5),
 
-  -- The typical shift times, written as free text since rosters vary a
-  -- lot between hospitals (e.g. "7am–5pm weekdays" or "10-hour rotating
-  -- shifts including nights").
-  shift_times text,
-
-  -- What after-hours / on-call work looked like, as free text (e.g.
-  -- "1 in 4 on-call weekends" or "no after-hours work required").
-  after_hours text,
+  -- Whether working weekends is required by this job. The one roster fact
+  -- that isn't derivable from the shift-type spine (review_shifts /
+  -- review_duties).
+  weekends_required boolean not null default false,
 
   -- What system the hospital uses for clinical notes — fully on paper,
   -- a fully electronic medical record (iEMR), or a mix of both. Left
@@ -498,7 +500,72 @@ create index reviews_agency_id_idx on reviews (agency_id);
 
 
 -- ============================================================================
--- 11. REVIEW_DUTIES — which (shift type, duty) pairs a review ticked
+-- 11. REVIEW_SHIFTS — per (review, shift type) pay and hours data
+-- ============================================================================
+--
+-- In plain language: Pay, Roster and Duties are three separate drill-ins a
+-- reviewer fills in, but they're really three lenses on the same underlying
+-- thing — the shift types a locum worked at this job. This table is that
+-- shared spine for Pay and Roster: one row per (review, shift type) the
+-- reviewer worked, e.g. "on this job I worked Night shifts, rostered 10
+-- hours, actually averaging 11, paid $X per shift". `review_duties` below
+-- keys off the same (review, shift type) pairing for Duties, so all three
+-- drill-ins line up automatically without needing to be kept in sync by
+-- hand.
+--
+-- rate_amount is always a single figure — what THIS reviewer was paid for
+-- one shift of this type. It is never entered as a range; the range shown
+-- to users emerges naturally across many reviews of the same job.
+--
+-- rostered_hours is the scheduled length of the shift (e.g. a day shift
+-- rostered 8.5 hours, to 4:30pm). actual_hours is what the locum actually
+-- worked on average (e.g. till 7pm on a busy job) — the gap between the
+-- two is itself a "busier than advertised" signal. Hourly rate is always
+-- computed as rate_amount ÷ rostered_hours (never actual_hours) — see the
+-- notes in the pay/roster spec for why.
+-- ============================================================================
+
+create table review_shifts (
+  -- A unique internal ID for this row, generated automatically.
+  id uuid primary key default gen_random_uuid(),
+
+  -- Which review this per-shift-type data belongs to. If the review is
+  -- deleted, its review_shifts rows are deleted along with it.
+  review_id uuid not null references reviews (id) on delete cascade,
+
+  -- Which shift type this data is for, e.g. "Night". Shared with
+  -- review_duties so Pay/Roster/Duties all key off the same shift types.
+  shift_type_id uuid not null references shift_types (id),
+
+  -- What this reviewer was paid for one shift of this type. A single
+  -- figure, never a range — see notes above.
+  rate_amount numeric(10, 2) not null,
+
+  -- The scheduled ("rostered") length of this shift type, in hours.
+  rostered_hours numeric(5, 2) not null,
+
+  -- What the locum actually worked on average for this shift type, in
+  -- hours — may differ from rostered_hours.
+  actual_hours numeric(5, 2) not null,
+
+  -- A review shouldn't report the same shift type twice — if a locum
+  -- worked, say, Night shifts throughout the job, that's one row, not
+  -- several.
+  unique (review_id, shift_type_id)
+);
+
+-- Speeds up "show me all the per-shift-type pay/hours rows for this
+-- review" (e.g. when displaying a full review, or computing job-level Pay
+-- and Roster drill-ins).
+create index review_shifts_review_id_idx on review_shifts (review_id);
+
+-- Speeds up statistics questions like "what's the rate range for Night
+-- shifts across every review of this job".
+create index review_shifts_shift_type_id_idx on review_shifts (shift_type_id);
+
+
+-- ============================================================================
+-- 12. REVIEW_DUTIES — which (shift type, duty) pairs a review ticked
 -- ============================================================================
 --
 -- In plain language: while filling in a review, a locum can say "on Night
@@ -535,7 +602,7 @@ create index review_duties_duty_id_idx on review_duties (duty_id);
 
 
 -- ============================================================================
--- 12. BONUS_ANSWERS — optional extra questions attached to a review
+-- 13. BONUS_ANSWERS — optional extra questions attached to a review
 -- ============================================================================
 --
 -- In plain language: besides the fixed set of questions every review
@@ -610,6 +677,7 @@ alter table shift_types enable row level security;
 alter table duties enable row level security;
 alter table jobs enable row level security;
 alter table reviews enable row level security;
+alter table review_shifts enable row level security;
 alter table review_duties enable row level security;
 alter table bonus_answers enable row level security;
 
@@ -641,6 +709,9 @@ create policy "Public can read jobs" on jobs
   for select using (true);
 
 create policy "Public can read reviews" on reviews
+  for select using (true);
+
+create policy "Public can read review_shifts" on review_shifts
   for select using (true);
 
 create policy "Public can read review_duties" on review_duties
