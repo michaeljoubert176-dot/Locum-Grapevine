@@ -9,6 +9,17 @@ export type ReviewDuty = {
   dutyName: string;
 };
 
+// One row from review_shifts: what this reviewer was paid and worked for one
+// shift type on this job. rate_amount/rostered_hours/actual_hours come back
+// from Postgres/PostgREST as numeric strings (same convention the old flat
+// pay_amount column used), so callers convert with Number() as needed.
+export type ReviewShift = {
+  shiftTypeName: string;
+  rateAmount: string;
+  rosteredHours: string;
+  actualHours: string;
+};
+
 export type ReviewRow = {
   id: string;
   created_at: string;
@@ -34,14 +45,24 @@ export type ReviewRow = {
   flights_provided: boolean;
   weekends_required: boolean;
 
+  agencyName: string | null;
+
   wish_youd_known: string | null;
   overall_comment: string | null;
 
+  shifts: ReviewShift[];
   duties: ReviewDuty[];
 };
 
-type RawReviewRow = Omit<ReviewRow, "duties"> & {
+type RawReviewRow = Omit<ReviewRow, "duties" | "shifts" | "agencyName"> & {
   review_duties: { shift_types: { name: string }; duties: { name: string } }[];
+  review_shifts: {
+    rate_amount: string;
+    rostered_hours: string;
+    actual_hours: string;
+    shift_types: { name: string };
+  }[];
+  agencies: { name: string } | null;
 };
 
 export type ReviewFetchResult =
@@ -56,6 +77,8 @@ const REVIEW_SELECT = `
   car_provided, accommodation_hospital_available, accommodation_private_available,
   flights_provided, weekends_required,
   wish_youd_known, overall_comment,
+  agencies ( name ),
+  review_shifts ( rate_amount, rostered_hours, actual_hours, shift_types ( name ) ),
   review_duties ( shift_types ( name ), duties ( name ) )
 `;
 
@@ -68,6 +91,13 @@ export async function fetchReviewsForJob(jobId: string): Promise<ReviewFetchResu
 
   const rows: ReviewRow[] = ((data ?? []) as unknown as RawReviewRow[]).map((row) => ({
     ...row,
+    agencyName: row.agencies?.name ?? null,
+    shifts: row.review_shifts.map((rs) => ({
+      shiftTypeName: rs.shift_types.name,
+      rateAmount: rs.rate_amount,
+      rosteredHours: rs.rostered_hours,
+      actualHours: rs.actual_hours,
+    })),
     duties: row.review_duties.map((rd) => ({
       shiftTypeName: rd.shift_types.name,
       dutyName: rd.duties.name,
@@ -208,11 +238,9 @@ export function sortReviewsForOverallComments(
 
 export type RateTypeSummary = "hourly" | "fixed_shift_rate" | "mixed";
 
-// Pay-per-shift-type figures now live in `review_shifts` rather than as flat
-// columns on `reviews` (see the schema spec) — the per-shift-type rate
-// ranges and hourly conversion are part of the Build B display work, not
-// built yet. This summary is limited to the job-level facts that remain on
-// `reviews` itself.
+// The job-level payment style. Individual reviews each report one contract
+// style (hourly or fixed shift rate); "mixed" surfaces when reviews of the
+// same job disagree, rather than silently picking one.
 export type PaySummary = {
   rateType: RateTypeSummary;
 };
@@ -234,12 +262,143 @@ export function formatMoney(amount: number): string {
   }).format(amount);
 }
 
+// Formats a decimal hours figure like "8.5h" — trims a trailing ".0" so
+// whole-hour shifts read cleanly.
+export function formatHours(hours: number): string {
+  return `${Number(hours.toFixed(1))}h`;
+}
+
+export type PayRange = { min: number; max: number };
+
+function payRange(amounts: number[]): PayRange | null {
+  if (amounts.length === 0) return null;
+  return { min: Math.min(...amounts), max: Math.max(...amounts) };
+}
+
+// One data point for the "hourly rate over time" graph: this review's
+// hourly rate for one shift type, plotted against when it was worked.
+export type PayPoint = { reviewId: string; workedFrom: string; hourlyRate: number };
+
+export type AgencyRate = { agency: string; hourlyRange: PayRange };
+
+export type PayShiftTypeSummary = {
+  shiftType: string;
+  // rate_amount as-is, ranged across every review that reported this shift
+  // type — the "Per Shift" side of the Hourly ⇄ Per Shift toggle.
+  perShiftRange: PayRange;
+  // rate_amount ÷ rostered_hours, ranged the same way — ALWAYS rostered
+  // hours, never actual, so pay isn't conflated with how hard the job
+  // works you (see the schema spec).
+  hourlyRange: PayRange;
+  points: PayPoint[];
+  byAgency: AgencyRate[];
+};
+
+// Groups every review_shifts row across all of this job's reviews by shift
+// type — the shared spine Pay, Roster and Duties all key off. For each
+// shift type this computes the per-shift and hourly rate ranges, the
+// hourly-rate-over-time points (skipping rows with no rostered hours to
+// divide by, or no worked_from date), and the hourly rate range per agency.
+export function summarizePayByShiftType(reviews: ReviewRow[]): PayShiftTypeSummary[] {
+  type Entry = {
+    reviewId: string;
+    rateAmount: number;
+    rosteredHours: number;
+    workedFrom: string | null;
+    agencyName: string | null;
+  };
+
+  const byShiftType = new Map<string, Entry[]>();
+
+  for (const review of reviews) {
+    for (const shift of review.shifts) {
+      const entries = byShiftType.get(shift.shiftTypeName) ?? [];
+      entries.push({
+        reviewId: review.id,
+        rateAmount: Number(shift.rateAmount),
+        rosteredHours: Number(shift.rosteredHours),
+        workedFrom: review.worked_from,
+        agencyName: review.agencyName,
+      });
+      byShiftType.set(shift.shiftTypeName, entries);
+    }
+  }
+
+  return Array.from(byShiftType.entries())
+    .map(([shiftType, entries]) => {
+      const perShiftAmounts = entries.map((e) => e.rateAmount);
+
+      const hourlyEntries = entries.filter((e) => e.rosteredHours > 0);
+      const hourlyAmounts = hourlyEntries.map((e) => e.rateAmount / e.rosteredHours);
+
+      const points: PayPoint[] = hourlyEntries
+        .filter((e): e is Entry & { workedFrom: string } => e.workedFrom !== null)
+        .map((e) => ({
+          reviewId: e.reviewId,
+          workedFrom: e.workedFrom,
+          hourlyRate: e.rateAmount / e.rosteredHours,
+        }))
+        .sort((a, b) => a.workedFrom.localeCompare(b.workedFrom));
+
+      const byAgencyAmounts = new Map<string, number[]>();
+      for (const e of hourlyEntries) {
+        const label = e.agencyName ?? "No agency";
+        const amounts = byAgencyAmounts.get(label) ?? [];
+        amounts.push(e.rateAmount / e.rosteredHours);
+        byAgencyAmounts.set(label, amounts);
+      }
+      const byAgency: AgencyRate[] = Array.from(byAgencyAmounts.entries())
+        .map(([agency, amounts]) => ({ agency, hourlyRange: payRange(amounts) as PayRange }))
+        .sort((a, b) => a.agency.localeCompare(b.agency));
+
+      return {
+        shiftType,
+        perShiftRange: payRange(perShiftAmounts) as PayRange,
+        hourlyRange: payRange(hourlyAmounts) ?? { min: 0, max: 0 },
+        points,
+        byAgency,
+      };
+    })
+    .sort((a, b) => a.shiftType.localeCompare(b.shiftType));
+}
+
+export type RosterShiftTypeSummary = {
+  shiftType: string;
+  avgRosteredHours: number;
+  avgActualHours: number;
+};
+
+// Groups review_shifts by shift type and averages rostered vs actual hours
+// for each — the gap between the two is the "busier than advertised"
+// signal the schema spec calls out.
+export function summarizeRosterByShiftType(reviews: ReviewRow[]): RosterShiftTypeSummary[] {
+  const byShiftType = new Map<string, { rostered: number[]; actual: number[] }>();
+
+  for (const review of reviews) {
+    for (const shift of review.shifts) {
+      const entry = byShiftType.get(shift.shiftTypeName) ?? { rostered: [], actual: [] };
+      entry.rostered.push(Number(shift.rosteredHours));
+      entry.actual.push(Number(shift.actualHours));
+      byShiftType.set(shift.shiftTypeName, entry);
+    }
+  }
+
+  return Array.from(byShiftType.entries())
+    .map(([shiftType, { rostered, actual }]) => ({
+      shiftType,
+      avgRosteredHours: average(rostered) ?? 0,
+      avgActualHours: average(actual) ?? 0,
+    }))
+    .sort((a, b) => a.shiftType.localeCompare(b.shiftType));
+}
+
 export type ShiftTypeDuties = { shiftType: string; duties: string[] };
 
 // The union of every (shift type, duty) pair ticked across all of this
 // job's reviews, grouped by shift type. This deliberately isn't a
-// per-review breakdown — the roster chip is meant to answer "what duties
-// come up in this job overall", not "what did any one reviewer report".
+// per-review breakdown — the duties drill-in is meant to answer "what
+// duties come up in this job overall", not "what did any one reviewer
+// report".
 export function summarizeDutiesByShiftType(reviews: ReviewRow[]): ShiftTypeDuties[] {
   const byShiftType = new Map<string, Set<string>>();
 
@@ -256,23 +415,36 @@ export function summarizeDutiesByShiftType(reviews: ReviewRow[]): ShiftTypeDutie
     .sort((a, b) => a.shiftType.localeCompare(b.shiftType));
 }
 
-// Whether more than half of reviews report this as true. A tie (or a
-// minority) reads as "no" — a job shouldn't get a confident checkmark for
-// something that's inconsistent in practice.
-export function majorityProvided(
+// The percentage of reviews reporting this boolean fact as true — the
+// figure shown on hover/tap for the Car/Accommodation/Flights chips (and
+// reused for the Overtime paid / Weekends required chips elsewhere).
+export function percentTrue(
   reviews: ReviewRow[],
-  key: "car_provided" | "flights_provided" | "overtime_paid"
-): boolean {
-  const providedCount = reviews.filter((r) => r[key]).length;
-  return providedCount > reviews.length - providedCount;
+  key: "car_provided" | "flights_provided" | "overtime_paid" | "weekends_required"
+): number {
+  if (reviews.length === 0) return 0;
+  const count = reviews.filter((r) => r[key]).length;
+  return (count / reviews.length) * 100;
 }
 
-// Same majority rule as majorityProvided, but for accommodation — which is
-// now two booleans (hospital-available / private-available) rather than one
-// flat flag, since a job can offer neither, either, or both kinds.
-export function majorityAccommodationProvided(reviews: ReviewRow[]): boolean {
-  const providedCount = reviews.filter(
+// Accommodation is two booleans rather than one flat flag, so "was
+// accommodation available" is true whenever either kind was.
+export function percentAccommodationAvailable(reviews: ReviewRow[]): number {
+  if (reviews.length === 0) return 0;
+  const count = reviews.filter(
     (r) => r.accommodation_hospital_available || r.accommodation_private_available
   ).length;
-  return providedCount > reviews.length - providedCount;
+  return (count / reviews.length) * 100;
+}
+
+export type AccommodationKinds = { hospital: boolean; private: boolean };
+
+// Which kind(s) of accommodation were EVER reported as available across
+// this job's reviews — used to list "Hospital-provided" and/or "Private"
+// under the Accommodation chip's percentage.
+export function accommodationKindsAvailable(reviews: ReviewRow[]): AccommodationKinds {
+  return {
+    hospital: reviews.some((r) => r.accommodation_hospital_available),
+    private: reviews.some((r) => r.accommodation_private_available),
+  };
 }

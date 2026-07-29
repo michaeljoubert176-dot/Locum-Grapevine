@@ -2,41 +2,46 @@
 
 import { useState } from "react";
 import {
-  majorityAccommodationProvided,
-  majorityProvided,
+  accommodationKindsAvailable,
+  percentAccommodationAvailable,
+  percentTrue,
   summarizeDutiesByShiftType,
   summarizePay,
-  type PaySummary,
-  type RateTypeSummary,
+  summarizePayByShiftType,
+  summarizeRosterByShiftType,
   type ReviewRow,
-  type ShiftTypeDuties,
 } from "@/lib/reviews";
-import { IconCheck, IconChevronDown, IconX } from "@/app/components/icons";
+import { IconChevronDown } from "@/app/components/icons";
+import HoverStatChip from "@/app/browse/components/HoverStatChip";
+import PayPanel from "@/app/browse/components/PayPanel";
+import RosterPanel from "@/app/browse/components/RosterPanel";
+import DutiesPanel from "@/app/browse/components/DutiesPanel";
 
-type Panel = "pay" | "roster" | null;
+type Panel = "pay" | "roster" | "duties" | null;
 
-const RATE_TYPE_LABEL: Record<RateTypeSummary, string> = {
-  hourly: "Hourly",
-  fixed_shift_rate: "Fixed shift rate",
-  mixed: "Hourly or fixed shift rate",
-};
-
-// The snapshot fact chips. Pay and Roster are tappable, each revealing a
-// panel below; Car/Accommodation/Flights sit on their own line as simple,
-// static yes/no chips. Only one drill-in panel is open at a time,
-// accordion-style.
+// The snapshot fact chips. Pay, Roster and Duties are three separate
+// drill-ins onto the same underlying shift-type spine — tapping one reveals
+// its own panel below; Car/Accommodation/Flights sit on their own line as
+// hover/tap chips revealing the percentage of reviews reporting each.
+// Only one drill-in panel is open at a time, accordion-style.
 export default function FactChipsSection({ reviews }: { reviews: ReviewRow[] }) {
   const [openPanel, setOpenPanel] = useState<Panel>(null);
 
-  const pay = summarizePay(reviews);
+  const paySummary = summarizePay(reviews);
+  const payByShiftType = summarizePayByShiftType(reviews);
+  const rosterByShiftType = summarizeRosterByShiftType(reviews);
   const duties = summarizeDutiesByShiftType(reviews);
 
-  const car = majorityProvided(reviews, "car_provided");
-  const accommodation = majorityAccommodationProvided(reviews);
-  const flights = majorityProvided(reviews, "flights_provided");
-  const overtimePaid = majorityProvided(reviews, "overtime_paid");
+  const carPercent = percentTrue(reviews, "car_provided");
+  const flightsPercent = percentTrue(reviews, "flights_provided");
+  const accommodationPercent = percentAccommodationAvailable(reviews);
+  const accommodationKinds = accommodationKindsAvailable(reviews);
 
-  function togglePanel(panel: "pay" | "roster") {
+  const accommodationDetail: string[] = [];
+  if (accommodationKinds.hospital) accommodationDetail.push("Hospital-provided accommodation available");
+  if (accommodationKinds.private) accommodationDetail.push("Private accommodation reimbursement available");
+
+  function togglePanel(panel: Exclude<Panel, null>) {
     setOpenPanel((current) => (current === panel ? null : panel));
   }
 
@@ -44,82 +49,34 @@ export default function FactChipsSection({ reviews }: { reviews: ReviewRow[] }) 
     <div>
       <div className="flex flex-wrap gap-2">
         <ChipButton variant="purple" expanded={openPanel === "pay"} onClick={() => togglePanel("pay")}>
-          {formatPayHeadline(pay)}
+          Pay
         </ChipButton>
 
         <ChipButton expanded={openPanel === "roster"} onClick={() => togglePanel("roster")}>
           Roster
         </ChipButton>
+
+        <ChipButton expanded={openPanel === "duties"} onClick={() => togglePanel("duties")}>
+          Duties
+        </ChipButton>
       </div>
 
       <div className="mt-2 flex flex-wrap gap-2">
-        <PresenceChip label="Car" present={car} />
-        <PresenceChip label="Accommodation" present={accommodation} />
-        <PresenceChip label="Flights" present={flights} />
+        <HoverStatChip label="Car" percent={carPercent} availabilityLabel="a car" />
+        <HoverStatChip
+          label="Accommodation"
+          percent={accommodationPercent}
+          availabilityLabel="accommodation"
+          detail={accommodationDetail}
+        />
+        <HoverStatChip label="Flights" percent={flightsPercent} availabilityLabel="flight reimbursement" />
       </div>
 
-      {openPanel === "pay" && <PayPanel pay={pay} overtimePaid={overtimePaid} />}
-      {openPanel === "roster" && <RosterPanel duties={duties} />}
-    </div>
-  );
-}
-
-// Per-shift-type rate ranges (the "$X–$Y / hour" headline) now depend on
-// review_shifts, which isn't wired up to the display yet — that's Build B.
-// For now the chip and panel just surface the job-level rate type.
-function formatPayHeadline(pay: PaySummary): string {
-  return RATE_TYPE_LABEL[pay.rateType];
-}
-
-function PayPanel({ pay, overtimePaid }: { pay: PaySummary; overtimePaid: boolean }) {
-  return (
-    <div className="mt-4 rounded-2xl border border-line bg-white p-5">
-      <dl className="grid gap-4 sm:grid-cols-2">
-        <PayStat label="Rate type" value={RATE_TYPE_LABEL[pay.rateType]} />
-      </dl>
-
-      <div className="mt-4">
-        <PresenceChip label="Overtime paid" present={overtimePaid} />
-      </div>
-    </div>
-  );
-}
-
-function PayStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <dt className="text-xs tracking-wide text-amber-accent uppercase">{label}</dt>
-      <dd className="mt-1 text-sm text-ink">{value}</dd>
-    </div>
-  );
-}
-
-function RosterPanel({ duties }: { duties: ShiftTypeDuties[] }) {
-  if (duties.length === 0) {
-    return (
-      <div className="mt-4 rounded-2xl border border-line bg-white p-5 text-sm text-ink-soft">
-        No duties have been reported for this job yet.
-      </div>
-    );
-  }
-
-  return (
-    <div className="mt-4 space-y-4 rounded-2xl border border-line bg-white p-5">
-      {duties.map(({ shiftType, duties: dutyNames }) => (
-        <div key={shiftType}>
-          <p className="text-xs tracking-wide text-amber-accent uppercase">{shiftType}</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {dutyNames.map((name) => (
-              <span
-                key={name}
-                className="inline-flex items-center rounded-full bg-amber-soft px-3 py-1 text-xs text-amber"
-              >
-                {name}
-              </span>
-            ))}
-          </div>
-        </div>
-      ))}
+      {openPanel === "pay" && (
+        <PayPanel reviews={reviews} payByShiftType={payByShiftType} paySummary={paySummary} />
+      )}
+      {openPanel === "roster" && <RosterPanel reviews={reviews} rosterByShiftType={rosterByShiftType} />}
+      {openPanel === "duties" && <DutiesPanel duties={duties} />}
     </div>
   );
 }
@@ -147,18 +104,5 @@ function ChipButton({
       {children}
       <IconChevronDown className={`h-3.5 w-3.5 ${expanded ? "rotate-180" : ""}`} />
     </button>
-  );
-}
-
-function PresenceChip({ label, present }: { label: string; present: boolean }) {
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium ${
-        present ? "bg-green text-white" : "bg-muted-soft text-muted"
-      }`}
-    >
-      {present ? <IconCheck className="h-3.5 w-3.5" /> : <IconX className="h-3.5 w-3.5" />}
-      {label}
-    </span>
   );
 }

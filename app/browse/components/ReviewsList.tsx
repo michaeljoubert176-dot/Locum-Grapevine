@@ -20,7 +20,7 @@ export default function ReviewsList({ reviews }: { reviews: ReviewRow[] }) {
       ) : (
         <ul
           role="list"
-          className="mt-6 max-h-[32rem] space-y-4 overflow-y-auto rounded-2xl border border-line bg-muted-soft/40 p-4 sm:p-5"
+          className="mt-6 max-h-[32rem] space-y-4 overflow-y-auto overscroll-contain rounded-2xl border border-line bg-muted-soft/40 p-4 sm:p-5"
         >
           {sorted.map((review) => (
             <ReviewCard key={review.id} review={review} />

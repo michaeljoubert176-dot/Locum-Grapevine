@@ -216,7 +216,7 @@ function OverallComments({
       ) : (
         <ul
           role="list"
-          className="mt-4 max-h-[28rem] space-y-3 overflow-y-auto rounded-2xl border border-line bg-muted-soft/40 p-4 sm:p-5"
+          className="mt-4 max-h-[28rem] space-y-3 overflow-y-auto overscroll-contain rounded-2xl border border-line bg-muted-soft/40 p-4 sm:p-5"
         >
           {sorted.map((review) => (
             <li key={review.id} className="rounded-2xl border border-line bg-white p-4">
