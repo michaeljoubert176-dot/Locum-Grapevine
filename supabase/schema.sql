@@ -405,17 +405,19 @@ create table reviews (
   -- Pay details.
   --
   -- The actual pay figures are no longer stored here as flat columns —
-  -- they're captured per shift type in `review_shifts` below (rate_amount,
-  -- rostered_hours, actual_hours), since a job can pay differently per
-  -- shift type (day vs night vs weekend, etc). What's left here are the
-  -- two job-level facts that apply across every shift type on this job.
+  -- they're captured per shift type in `review_shifts` below (rate_amount
+  -- plus the rostered/actual start and finish times), since a job can pay
+  -- differently per shift type (day vs night vs weekend, etc). What's left
+  -- here are the two job-level facts that apply across every shift type on
+  -- this job.
   -- --------------------------------------------------------------------
 
   -- Whether pay is worked out hourly, or as a fixed rate per shift
   -- regardless of how long the shift runs. This is the CONTRACT payment
   -- style — one per job — and tells LG how to interpret each
   -- review_shifts.rate_amount (LG converts fixed-shift rates to hourly by
-  -- dividing by rostered_hours).
+  -- dividing by the rostered hours derived from rostered_start/
+  -- rostered_finish).
   rate_type text not null check (rate_type in ('hourly', 'fixed_shift_rate')),
 
   -- Whether overtime worked beyond the rostered shift was paid.
@@ -507,22 +509,24 @@ create index reviews_agency_id_idx on reviews (agency_id);
 -- reviewer fills in, but they're really three lenses on the same underlying
 -- thing — the shift types a locum worked at this job. This table is that
 -- shared spine for Pay and Roster: one row per (review, shift type) the
--- reviewer worked, e.g. "on this job I worked Night shifts, rostered 10
--- hours, actually averaging 11, paid $X per shift". `review_duties` below
--- keys off the same (review, shift type) pairing for Duties, so all three
--- drill-ins line up automatically without needing to be kept in sync by
--- hand.
+-- reviewer worked, e.g. "on this job I worked Night shifts, rostered
+-- 22:00–08:00, actually averaging 22:00–09:00, paid $X per shift".
+-- `review_duties` below keys off the same (review, shift type) pairing for
+-- Duties, so all three drill-ins line up automatically without needing to
+-- be kept in sync by hand.
 --
 -- rate_amount is always a single figure — what THIS reviewer was paid for
 -- one shift of this type. It is never entered as a range; the range shown
 -- to users emerges naturally across many reviews of the same job.
 --
--- rostered_hours is the scheduled length of the shift (e.g. a day shift
--- rostered 8.5 hours, to 4:30pm). actual_hours is what the locum actually
--- worked on average (e.g. till 7pm on a busy job) — the gap between the
--- two is itself a "busier than advertised" signal. Hourly rate is always
--- computed as rate_amount ÷ rostered_hours (never actual_hours) — see the
--- notes in the pay/roster spec for why.
+-- Hours are NOT stored directly — they're derived (in the app) from the
+-- four times below. rostered_start/rostered_finish is the scheduled time
+-- of the shift (e.g. 08:00 to 16:30). actual_start/actual_finish is what
+-- the locum actually worked on average (e.g. till 7pm on a busy job) — the
+-- gap between rostered and actual is itself a "busier than advertised"
+-- signal. Hourly rate is always computed as rate_amount ÷ rostered hours
+-- (derived from rostered_start/rostered_finish, never the actual times) —
+-- see the notes in the pay/roster spec for why.
 -- ============================================================================
 
 create table review_shifts (
@@ -541,12 +545,17 @@ create table review_shifts (
   -- figure, never a range — see notes above.
   rate_amount numeric(10, 2) not null,
 
-  -- The scheduled ("rostered") length of this shift type, in hours.
-  rostered_hours numeric(5, 2) not null,
+  -- The scheduled ("rostered") start and finish time of this shift type,
+  -- e.g. 08:00 to 16:30. Rostered hours are derived from these when
+  -- needed, rather than stored as a separate figure.
+  rostered_start time not null,
+  rostered_finish time not null,
 
-  -- What the locum actually worked on average for this shift type, in
-  -- hours — may differ from rostered_hours.
-  actual_hours numeric(5, 2) not null,
+  -- What time the locum actually started and finished this shift type on
+  -- average — may run later (or start earlier) than the rostered times.
+  -- Actual hours are likewise derived from these when displayed.
+  actual_start time not null,
+  actual_finish time not null,
 
   -- A review shouldn't report the same shift type twice — if a locum
   -- worked, say, Night shifts throughout the job, that's one row, not
