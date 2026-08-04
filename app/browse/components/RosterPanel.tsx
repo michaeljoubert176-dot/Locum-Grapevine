@@ -1,9 +1,10 @@
 import { formatHours, percentTrue, type ReviewRow, type RosterShiftTypeSummary } from "@/lib/reviews";
 import PresenceChip from "@/app/browse/components/PresenceChip";
 
-// Rostered vs actual hours per shift type — the "busier than advertised"
-// signal — plus whether weekends are required. Unlike Pay, this has no
-// further drill-in: it's just the two hours figures shown side by side.
+// Rostered vs actual times (and the hours derived from them) per shift
+// type — the "busier than advertised" signal — plus whether weekends are
+// required. Lists every shift type this job has (the same set Duties
+// shows), not just the ones with pay/hours reported yet.
 export default function RosterPanel({
   reviews,
   rosterByShiftType,
@@ -33,20 +34,36 @@ export default function RosterPanel({
 }
 
 function RosterShiftTypeRow({ summary }: { summary: RosterShiftTypeSummary }) {
-  const { shiftType, avgRosteredHours, avgActualHours } = summary;
+  if (!summary.hasData) {
+    return (
+      <div className="rounded-xl border border-line p-4">
+        <p className="text-xs tracking-wide text-amber-accent uppercase">{summary.shiftType}</p>
+        <p className="mt-2 text-sm text-ink-soft">No rostered or actual hours reported yet.</p>
+      </div>
+    );
+  }
+
+  const { shiftType, rosteredStart, rosteredFinish, actualStart, actualFinish, avgRosteredHours, avgActualHours } =
+    summary;
   const gap = avgActualHours - avgRosteredHours;
 
   return (
     <div className="rounded-xl border border-line p-4">
       <p className="text-xs tracking-wide text-amber-accent uppercase">{shiftType}</p>
-      <div className="mt-2 grid grid-cols-2 gap-4">
+      <div className="mt-2 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <dt className="text-xs text-ink-soft">Rostered</dt>
-          <dd className="mt-0.5 text-sm font-semibold text-ink">{formatHours(avgRosteredHours)}</dd>
+          <dd className="mt-0.5 text-sm font-semibold text-ink">
+            {rosteredStart}–{rosteredFinish}
+            <span className="ml-1.5 font-normal text-ink-soft">({formatHours(avgRosteredHours)})</span>
+          </dd>
         </div>
         <div>
           <dt className="text-xs text-ink-soft">Actual (avg)</dt>
-          <dd className="mt-0.5 text-sm font-semibold text-ink">{formatHours(avgActualHours)}</dd>
+          <dd className="mt-0.5 text-sm font-semibold text-ink">
+            {actualStart}–{actualFinish}
+            <span className="ml-1.5 font-normal text-ink-soft">({formatHours(avgActualHours)})</span>
+          </dd>
         </div>
       </div>
       {Math.abs(gap) >= 0.1 && (

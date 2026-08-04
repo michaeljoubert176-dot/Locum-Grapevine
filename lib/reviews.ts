@@ -10,14 +10,18 @@ export type ReviewDuty = {
 };
 
 // One row from review_shifts: what this reviewer was paid and worked for one
-// shift type on this job. rate_amount/rostered_hours/actual_hours come back
-// from Postgres/PostgREST as numeric strings (same convention the old flat
-// pay_amount column used), so callers convert with Number() as needed.
+// shift type on this job. rate_amount comes back from Postgres/PostgREST as
+// a numeric string (same convention the old flat pay_amount column used), so
+// callers convert with Number() as needed. The four time fields come back as
+// "HH:MM:SS" strings — hours aren't stored directly, they're derived from
+// these (see durationHours below).
 export type ReviewShift = {
   shiftTypeName: string;
   rateAmount: string;
-  rosteredHours: string;
-  actualHours: string;
+  rosteredStart: string;
+  rosteredFinish: string;
+  actualStart: string;
+  actualFinish: string;
 };
 
 export type ReviewRow = {
@@ -58,8 +62,10 @@ type RawReviewRow = Omit<ReviewRow, "duties" | "shifts" | "agencyName"> & {
   review_duties: { shift_types: { name: string }; duties: { name: string } }[];
   review_shifts: {
     rate_amount: string;
-    rostered_hours: string;
-    actual_hours: string;
+    rostered_start: string;
+    rostered_finish: string;
+    actual_start: string;
+    actual_finish: string;
     shift_types: { name: string };
   }[];
   agencies: { name: string } | null;
@@ -78,7 +84,7 @@ const REVIEW_SELECT = `
   flights_provided, weekends_required,
   wish_youd_known, overall_comment,
   agencies ( name ),
-  review_shifts ( rate_amount, rostered_hours, actual_hours, shift_types ( name ) ),
+  review_shifts ( rate_amount, rostered_start, rostered_finish, actual_start, actual_finish, shift_types ( name ) ),
   review_duties ( shift_types ( name ), duties ( name ) )
 `;
 
@@ -95,8 +101,10 @@ export async function fetchReviewsForJob(jobId: string): Promise<ReviewFetchResu
     shifts: row.review_shifts.map((rs) => ({
       shiftTypeName: rs.shift_types.name,
       rateAmount: rs.rate_amount,
-      rosteredHours: rs.rostered_hours,
-      actualHours: rs.actual_hours,
+      rosteredStart: rs.rostered_start,
+      rosteredFinish: rs.rostered_finish,
+      actualStart: rs.actual_start,
+      actualFinish: rs.actual_finish,
     })),
     duties: row.review_duties.map((rd) => ({
       shiftTypeName: rd.shift_types.name,
@@ -275,6 +283,43 @@ function payRange(amounts: number[]): PayRange | null {
   return { min: Math.min(...amounts), max: Math.max(...amounts) };
 }
 
+// Parses a Postgres "time" string ("08:00:00") into minutes since midnight.
+function timeStringToMinutes(time: string): number {
+  const [hours, minutes] = time.split(":").map(Number);
+  return hours * 60 + minutes;
+}
+
+// The inverse of timeStringToMinutes, for display — e.g. 510 -> "08:30".
+function minutesToTimeLabel(minutes: number): string {
+  const normalized = ((Math.round(minutes) % 1440) + 1440) % 1440;
+  const hours = Math.floor(normalized / 60);
+  const mins = normalized % 60;
+  return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
+}
+
+// Hours between a start and finish time-of-day. If finish is earlier than
+// start, the shift is assumed to cross midnight (e.g. a Night shift from
+// 22:00 to 07:00) rather than being negative.
+function durationHours(start: string, finish: string): number {
+  const startMinutes = timeStringToMinutes(start);
+  const finishMinutes = timeStringToMinutes(finish);
+  const diff = finishMinutes - startMinutes;
+  return (diff < 0 ? diff + 24 * 60 : diff) / 60;
+}
+
+// The full set of shift types this job's reviews mention anywhere — either
+// with pay/roster data (review_shifts) or duties (review_duties). Roster
+// uses this so every shift type Duties shows also gets a Roster block, even
+// if no pay/hours have been reported for it yet.
+function shiftTypeSpine(reviews: ReviewRow[]): string[] {
+  const names = new Set<string>();
+  for (const review of reviews) {
+    for (const shift of review.shifts) names.add(shift.shiftTypeName);
+    for (const duty of review.duties) names.add(duty.shiftTypeName);
+  }
+  return Array.from(names).sort();
+}
+
 // One data point for the "hourly rate over time" graph: this review's
 // hourly rate for one shift type, plotted against when it was worked.
 export type PayPoint = { reviewId: string; workedFrom: string; hourlyRate: number };
@@ -316,7 +361,7 @@ export function summarizePayByShiftType(reviews: ReviewRow[]): PayShiftTypeSumma
       entries.push({
         reviewId: review.id,
         rateAmount: Number(shift.rateAmount),
-        rosteredHours: Number(shift.rosteredHours),
+        rosteredHours: durationHours(shift.rosteredStart, shift.rosteredFinish),
         workedFrom: review.worked_from,
         agencyName: review.agencyName,
       });
@@ -362,34 +407,75 @@ export function summarizePayByShiftType(reviews: ReviewRow[]): PayShiftTypeSumma
     .sort((a, b) => a.shiftType.localeCompare(b.shiftType));
 }
 
-export type RosterShiftTypeSummary = {
-  shiftType: string;
-  avgRosteredHours: number;
-  avgActualHours: number;
-};
+export type RosterShiftTypeSummary =
+  | {
+      shiftType: string;
+      hasData: true;
+      rosteredStart: string;
+      rosteredFinish: string;
+      actualStart: string;
+      actualFinish: string;
+      avgRosteredHours: number;
+      avgActualHours: number;
+    }
+  | { shiftType: string; hasData: false };
 
-// Groups review_shifts by shift type and averages rostered vs actual hours
-// for each — the gap between the two is the "busier than advertised"
-// signal the schema spec calls out.
+// Groups review_shifts by shift type and averages rostered vs actual times
+// (and the hours derived from them) for each — the gap between the two is
+// the "busier than advertised" signal the schema spec calls out. Covers
+// every shift type in the job's shared spine (see shiftTypeSpine), not just
+// the ones with review_shifts rows, so Roster always lists the same set of
+// shift types Duties does — shift types with no pay/hours reported yet
+// still get a block, just with hasData: false.
 export function summarizeRosterByShiftType(reviews: ReviewRow[]): RosterShiftTypeSummary[] {
-  const byShiftType = new Map<string, { rostered: number[]; actual: number[] }>();
+  type Entry = {
+    rosteredStart: number[];
+    rosteredFinish: number[];
+    actualStart: number[];
+    actualFinish: number[];
+    rosteredHours: number[];
+    actualHours: number[];
+  };
+
+  const byShiftType = new Map<string, Entry>();
 
   for (const review of reviews) {
     for (const shift of review.shifts) {
-      const entry = byShiftType.get(shift.shiftTypeName) ?? { rostered: [], actual: [] };
-      entry.rostered.push(Number(shift.rosteredHours));
-      entry.actual.push(Number(shift.actualHours));
+      const entry: Entry = byShiftType.get(shift.shiftTypeName) ?? {
+        rosteredStart: [],
+        rosteredFinish: [],
+        actualStart: [],
+        actualFinish: [],
+        rosteredHours: [],
+        actualHours: [],
+      };
+      entry.rosteredStart.push(timeStringToMinutes(shift.rosteredStart));
+      entry.rosteredFinish.push(timeStringToMinutes(shift.rosteredFinish));
+      entry.actualStart.push(timeStringToMinutes(shift.actualStart));
+      entry.actualFinish.push(timeStringToMinutes(shift.actualFinish));
+      entry.rosteredHours.push(durationHours(shift.rosteredStart, shift.rosteredFinish));
+      entry.actualHours.push(durationHours(shift.actualStart, shift.actualFinish));
       byShiftType.set(shift.shiftTypeName, entry);
     }
   }
 
-  return Array.from(byShiftType.entries())
-    .map(([shiftType, { rostered, actual }]) => ({
+  return shiftTypeSpine(reviews).map((shiftType) => {
+    const entry = byShiftType.get(shiftType);
+    if (!entry) {
+      return { shiftType, hasData: false };
+    }
+
+    return {
       shiftType,
-      avgRosteredHours: average(rostered) ?? 0,
-      avgActualHours: average(actual) ?? 0,
-    }))
-    .sort((a, b) => a.shiftType.localeCompare(b.shiftType));
+      hasData: true,
+      rosteredStart: minutesToTimeLabel(average(entry.rosteredStart) ?? 0),
+      rosteredFinish: minutesToTimeLabel(average(entry.rosteredFinish) ?? 0),
+      actualStart: minutesToTimeLabel(average(entry.actualStart) ?? 0),
+      actualFinish: minutesToTimeLabel(average(entry.actualFinish) ?? 0),
+      avgRosteredHours: average(entry.rosteredHours) ?? 0,
+      avgActualHours: average(entry.actualHours) ?? 0,
+    };
+  });
 }
 
 export type ShiftTypeDuties = { shiftType: string; duties: string[] };
